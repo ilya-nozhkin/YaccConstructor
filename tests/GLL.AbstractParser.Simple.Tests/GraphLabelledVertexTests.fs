@@ -16,8 +16,8 @@ open Yard.Core.Conversions.ExpandMeta
 open System.Collections.Generic
 open System.Linq
 
-let dataDir = System.IO.Path.Combine(__SOURCE_DIRECTORY__, @"..\data\AbstractGLL_LabelledVertices\")
-let grammarsDir = __SOURCE_DIRECTORY__
+let dataDir = Path.Combine(__SOURCE_DIRECTORY__, "..", "data", "AbstractGLL_LabelledVertices") + Path.DirectorySeparatorChar.ToString()
+let grammarsDir = __SOURCE_DIRECTORY__ + Path.DirectorySeparatorChar.ToString()
 
 let removeIdFromVert (s:string) = 
     let ind =  s.IndexOf("_")

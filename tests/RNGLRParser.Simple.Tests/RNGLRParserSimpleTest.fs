@@ -4,12 +4,13 @@ open Yard.Generators.RNGLR
 open Yard.Generators.Common.AST
 open NUnit.Framework
 open Microsoft.FSharp.Collections
+open System.IO
 
 let run path astBuilder =
     let tokens = LexCommon.tokens(path)
     astBuilder tokens
 
-let dir = System.IO.Path.Combine(__SOURCE_DIRECTORY__, @"..\data\RNGLR\")
+let dir = Path.Combine(__SOURCE_DIRECTORY__, "..", "data", "RNGLR") + Path.DirectorySeparatorChar.ToString()
 let getPath file = System.IO.Path.Combine(dir, file)
 
 let inline printErr (num, token : 'a, msg) =
