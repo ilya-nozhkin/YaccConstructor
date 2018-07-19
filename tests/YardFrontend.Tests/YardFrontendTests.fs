@@ -29,7 +29,7 @@ open NUnit.Framework
 
 module Lexer = Yard.Frontends.YardFrontend.GrammarLexer
 
-let dataDir = System.IO.Path.Combine(__SOURCE_DIRECTORY__, @"\..\data\YardFrontend\")
+let dataDir = System.IO.Path.Combine(__SOURCE_DIRECTORY__, @"..\data\YardFrontend\")
 
 let basePath subdir = System.IO.Path.Combine(dataDir, subdir)
 

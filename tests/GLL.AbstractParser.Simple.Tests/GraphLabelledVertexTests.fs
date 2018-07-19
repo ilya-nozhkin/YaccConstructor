@@ -16,7 +16,7 @@ open Yard.Core.Conversions.ExpandMeta
 open System.Collections.Generic
 open System.Linq
 
-let dataDir = System.IO.Path.Combine(__SOURCE_DIRECTORY__, @"\..\data\AbstractGLL_LabelledVertices\")
+let dataDir = System.IO.Path.Combine(__SOURCE_DIRECTORY__, @"..\data\AbstractGLL_LabelledVertices\")
 let grammarsDir = __SOURCE_DIRECTORY__
 
 let removeIdFromVert (s:string) = 
@@ -45,7 +45,7 @@ let getInputGraphVertLbl tokenizer inputFile startPos =
 let getParserSource grammarFile conv = 
     let fe = new YardFrontend()
     let gen = new GLL()
-    generate (grammarsDir + grammarFile)
+    generate (System.IO.Path.Combine (grammarsDir, grammarFile))
              fe gen 
              None
              conv

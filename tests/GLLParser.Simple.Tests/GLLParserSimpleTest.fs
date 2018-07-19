@@ -21,7 +21,7 @@ open Yard.Core.Conversions.ExpandMeta
 //    let tokens = LexCommon.tokens(path)
 //    astBuilder tokens
 
-let inputFilesPath = System.IO.Path.Combine(__SOURCE_DIRECTORY__, @"\..\data\GLL\")
+let inputFilesPath = System.IO.Path.Combine(__SOURCE_DIRECTORY__, @"..\data\GLL\")
 
 let grammarFilesPath = __SOURCE_DIRECTORY__
 
@@ -58,7 +58,7 @@ let getParserSource grammarFile =
     let fe = new YardFrontend()
     let gen = new GLL()
     let conv = seq{yield new ExpandMeta()}
-    generate (grammarFilesPath + grammarFile)
+    generate (System.IO.Path.Combine (grammarFilesPath, grammarFile))
              fe gen 
              None
              conv
