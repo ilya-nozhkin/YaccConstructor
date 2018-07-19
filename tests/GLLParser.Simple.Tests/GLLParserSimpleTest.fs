@@ -21,9 +21,9 @@ open Yard.Core.Conversions.ExpandMeta
 //    let tokens = LexCommon.tokens(path)
 //    astBuilder tokens
 
-let inputFilesPath = (__SOURCE_DIRECTORY__ + @"\..\data\GLL\")
+let inputFilesPath = System.IO.Path.Combine(__SOURCE_DIRECTORY__, @"\..\data\GLL\")
 
-let grammarFilesPath = __SOURCE_DIRECTORY__ + @"\"
+let grammarFilesPath = __SOURCE_DIRECTORY__
 
 let getTokens path =
     System.IO.File.ReadAllText(inputFilesPath + path)

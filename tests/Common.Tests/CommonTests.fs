@@ -94,7 +94,7 @@ type ``Components loader tests`` () =
 [<TestFixture>]
 type ``Checker test`` () =
     let frontend = Yard.Frontends.YardFrontend.YardFrontend() :> Frontend
-    let basePath = (__SOURCE_DIRECTORY__+ @"..\..\data\Checkers\")
+    let basePath = System.IO.Path.Combine(__SOURCE_DIRECTORY__, @"..\..\data\Checkers\")
 
     let getUndecl path =
         path
