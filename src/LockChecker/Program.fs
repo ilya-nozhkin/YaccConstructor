@@ -8,11 +8,13 @@ open System.Collections.Generic
 open Yard.Generators.Common.ASTGLLFSA
 open Yard.Generators.GLL.ParserCommon
 
-open ResultProcessing
 open InputLoading
+open LockChecker
+open LockChecker.Graph
 open System.IO
 open System
 
+(*
 let parseGraph parserSource inputGraph =
     getAllSPPFRootsAsINodes parserSource inputGraph
 
@@ -48,24 +50,8 @@ let printAllBadAsserts (roots: INode []) (parserSource: ParserSourceGLL) outputF
 let printGraph (graph : SimpleInputGraph<_>) (file : string) = 
     graph.PrintToDot file id
 
-type optionsSet = {
-    graphFile: string;
-    verbose: bool;
-    printStages: bool;
-    useStdin: bool;
-    useStdout: bool;
-    pathsOutput: string;
-    drawGraph: bool;
-    graphOutput: string}
  
 let startExecution options = 
-    let log message =
-        if options.verbose then
-            printfn "%s" message
-     
-    let stage name = 
-        if options.printStages then
-            printfn "stage: %s" name
     
     let inputStream = 
         if (options.useStdin) then
@@ -98,12 +84,27 @@ let startExecution options =
     outputStream.Close()
 
     log (sprintf "Processing time: %A" (System.DateTime.Now - start))
+*)
 
+type optionsSet = {
+    graphFile: string;
+    verbose: bool;
+    printStages: bool;
+    useStdin: bool;
+    useStdout: bool;
+    pathsOutput: string;
+    drawGraph: bool;
+    graphOutput: string;
+    asService: bool;
+    port: int}
+    
 type CLIArguments =
     | [<Unique; AltCommandLine("-v")>] Verbose 
     | Output_Path of path: string
     | Draw_Graph of path: string
     | Print_Stages
+    | As_Service
+    | Port of int
     | [<MainCommand; Last>] Graph_File of path:string
 with
     interface IArgParserTemplate with   
@@ -114,6 +115,11 @@ with
             | Draw_Graph path -> "Print source graph in the .dot format"
             | Print_Stages -> "Print stage name when each of them starts"
             | Graph_File path -> "Path to graph that should be parsed"
+            | As_Service -> "Run Lock Checker as service that can be accessed through socket"
+            | Port _ -> "Set port where the service will be located"
+
+open System.Net
+open System.Threading
 
 [<EntryPoint>]
 let main argv =
@@ -132,9 +138,15 @@ let main argv =
                 graphFile = results.GetResult (Graph_File, defaultValue = "")
                 pathsOutput = results.GetResult (Output_Path, defaultValue = "")
                 graphOutput = results.GetResult (Draw_Graph, defaultValue = "")
+                asService = results.Contains As_Service
+                port = results.GetResult (Port, defaultValue = 8888)
             }
-
-        startExecution options
+        
+        if options.asService then
+            let graph = new CustomControlFlowGraph()
+            let serviceHost = new ServiceHost(graph, options.port)
+            serviceHost.Start()
     with e ->
         printfn "%s" e.Message
+        
     0
