@@ -5,6 +5,7 @@ open System.Net
 open System.Net.Sockets
 open System.Runtime.Serialization.Json
 open System.Runtime.Serialization
+open System.Collections.Generic
 
 open System.Xml
 open LockChecker.Graph
@@ -88,27 +89,34 @@ type UpdateDecoderMessage =
 type ServiceHost(graph: IControlFlowGraph, port) =
     let socket = TcpListener.Create (port)
     let mutable client = null
-    let mutable stream = null
-    let mutable reader = null
-    let mutable xmlReader = null
     let mutable isProcess = true
-   
-    let performParsing() =
+    
+    let performParsing (writer : StreamWriter) =
         graph.PrepareForParsing()
         
         let statistics = graph.GetStatistics()
         let parserSource = Parsing.generateParser statistics.calls statistics.locks statistics.asserts
+        graph.SetTokenizer parserSource.StringToToken
         
-        let results = Parsing.parseGraph parserSource graph
+        let roots = Parsing.parseGraph parserSource graph
+        
+        let results = 
+            let temporaryResults = new HashSet<_>()
+            roots
+            |> Array.map (fun x -> ResultProcessing.extractNonCyclicPaths x parserSource.IntToString)
+            |> Array.iter (fun s -> temporaryResults.UnionWith s)
+            temporaryResults
+        
+        results |> Seq.iter (writer.WriteLine)
         
         graph.CleanUpAfterParsing()
     
     member this.Start() =
         socket.Start()
         client <- socket.AcceptTcpClient()
-        stream <- client.GetStream()
-        reader <- new StreamReader(stream)
         
+        use stream = client.GetStream()
+        use reader = new StreamReader(stream)
         use writer = new StreamWriter(stream)
         
         while isProcess do
@@ -142,7 +150,10 @@ type ServiceHost(graph: IControlFlowGraph, port) =
                 | "run_analysis" ->
                     let message = RunAnalysisMessage.FromJson dataStream
                     graph.SetStarts message.starts
-                    performParsing()
+                    performParsing writer
+                    success <- true
+                | "terminate" ->
+                    isProcess <- false
                     success <- true
                 | _ -> ()
             with e -> printfn "%s" e.Message
@@ -154,8 +165,6 @@ type ServiceHost(graph: IControlFlowGraph, port) =
                 
             writer.Flush()
                 
-        reader.Close()
-        stream.Close()
         client.Close()
         socket.Stop()           
         

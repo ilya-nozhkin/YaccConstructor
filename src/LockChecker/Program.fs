@@ -10,11 +10,11 @@ open Yard.Generators.GLL.ParserCommon
 
 open InputLoading
 open LockChecker
+open LockChecker
 open LockChecker.Graph
 open System.IO
 open System
 
-(*
 let parseGraph parserSource inputGraph =
     getAllSPPFRootsAsINodes parserSource inputGraph
 
@@ -27,65 +27,12 @@ let printAllPaths (roots: INode []) (parserSource: ParserSourceGLL) (outputStrea
         let result = 
             let res = new HashSet<_>()
             roots
-            |> Array.map (fun x -> allPathsForRoot x parserSource.IntToString)
+            |> Array.map (fun x -> ResultProcessing.extractNonCyclicPaths x parserSource.IntToString)
             |> Array.iter (fun s -> res.UnionWith s)
             res
 
         result |> Seq.iter (outputStream.WriteLine)
-
-let printAllBadAsserts (roots: INode []) (parserSource: ParserSourceGLL) outputFile = 
-    if roots.Length < 1
-    then 
-        printfn "doesn't parsed"
-        System.IO.File.WriteAllLines(outputFile, [""])
-    else
-        let result = 
-            roots
-            |> Array.collect(fun root -> getBadAsserts root parserSource.IntToString)
-            |> Array.map(fun x -> System.String.Join("; ", x))
-            |> Array.distinct
-
-        System.IO.File.WriteAllLines(outputFile, result)
-
-let printGraph (graph : SimpleInputGraph<_>) (file : string) = 
-    graph.PrintToDot file id
-
  
-let startExecution options = 
-    
-    let inputStream = 
-        if (options.useStdin) then
-            Console.In
-        else 
-            new StreamReader (options.graphFile) :> TextReader
-
-    let parserSource, inputGraph = loadInput inputStream log stage
-
-    (*if options.drawGraph then
-        printGraph inputGraph options.graphOutput*)
-
-    let start = System.DateTime.Now
-    stage "Parsing"
-
-    let roots = parseGraph parserSource inputGraph
-
-    log (sprintf "Parsing time: %A" (System.DateTime.Now - start))
-
-    let start = System.DateTime.Now
-    stage "Processing"
-
-    let outputStream =
-        if options.useStdout then
-            Console.Out
-        else
-            new StreamWriter (options.pathsOutput) :> TextWriter
-
-    printAllPaths roots parserSource outputStream
-    outputStream.Close()
-
-    log (sprintf "Processing time: %A" (System.DateTime.Now - start))
-*)
-
 type optionsSet = {
     graphFile: string;
     verbose: bool;
@@ -97,6 +44,35 @@ type optionsSet = {
     graphOutput: string;
     asService: bool;
     port: int}
+    
+let startAsConsoleApplication options = 
+    let inputStream = new StreamReader (options.graphFile) :> TextReader
+
+    let parserSource, inputGraph = loadInput inputStream
+
+    (*if options.drawGraph then
+        printGraph inputGraph options.graphOutput*)
+
+    let start = System.DateTime.Now
+    Logging.stage "Parsing"
+
+    let roots = parseGraph parserSource inputGraph
+
+    Logging.log (sprintf "Parsing time: %A" (System.DateTime.Now - start))
+
+    let start = System.DateTime.Now
+    Logging.stage "Processing"
+
+    let outputStream =
+        if options.useStdout then
+            Console.Out
+        else
+            new StreamWriter (options.pathsOutput) :> TextWriter
+
+    printAllPaths roots parserSource outputStream
+    outputStream.Close()
+
+    Logging.log (sprintf "Processing time: %A" (System.DateTime.Now - start))
     
 type CLIArguments =
     | [<Unique; AltCommandLine("-v")>] Verbose 
@@ -146,6 +122,8 @@ let main argv =
             let graph = new CustomControlFlowGraph()
             let serviceHost = new ServiceHost(graph, options.port)
             serviceHost.Start()
+        else 
+            startAsConsoleApplication options
     with e ->
         printfn "%s" e.Message
         

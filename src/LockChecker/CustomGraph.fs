@@ -110,7 +110,7 @@ module Helpers =
 type CustomControlFlowGraph () =
     let methodsIndex = new Dictionary<string, Method>()
     let nodesIdIndex = new SortedDictionary<int, Node>()
-    let mutable dynamicIndex: ResizeArray<Node> = null
+    let mutable dynamicIndex: Node [] = null
     
     let mutable starts: int [] = null
    
@@ -250,19 +250,18 @@ type CustomControlFlowGraph () =
             starts <- starts'
             
         member this.PrepareForParsing() = 
-            dynamicIndex <- new ResizeArray<_>(maxNode + 1) 
+            dynamicIndex <- Array.zeroCreate (maxNode + 1) 
             starts |> Array.iter (fun start -> dynamicIndex.[start] <- nodesIdIndex.[start])
             
         member this.CleanUpAfterParsing() = 
-            dynamicIndex.Clear()
             dynamicIndex <- null
         
         member this.GetStatistics() =
             {
-                nodes = maxNode
-                calls = maxCall
-                locks = maxLock
-                asserts = maxAssert 
+                nodes = maxNode + 1
+                calls = maxCall + 1
+                locks = maxLock + 1
+                asserts = maxAssert + 1 
             }
                 
     interface IParserInput with
@@ -279,6 +278,10 @@ type CustomControlFlowGraph () =
                 (
                     fun e -> 
                         dynamicIndex.[e.endNode.id] <- e.endNode
+                )
+            node.edges |> Seq.iter
+                (
+                    fun e -> 
                         pFun (tokenizer e.label) (e.endNode.id * 1<positionInInput>)
                 )
 

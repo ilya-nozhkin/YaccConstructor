@@ -65,7 +65,7 @@ and PackedNode =
         member this.getExtension () = this.Right.getExtension ()
     new (state, left, right) = {State = state; Left = left; Right = right}
 
-and IntermidiateNode = 
+and IntermediateNode = 
     val State     : int<positionInGrammar>
     val Nonterm   : int<positionInGrammar>
     val Extension : int64<extension>
@@ -141,7 +141,7 @@ let gllNodeToGlr (node: INode) rightToRule intToString termToIndex =
         match node with
         | :? PackedNode as packed -> 
             Seq.append <|| (collectChildren packed.Left, collectChildren packed.Right)                
-        | :? IntermidiateNode as inter ->
+        | :? IntermediateNode as inter ->
             inter.MapChildren collectChildren|> Seq.concat        
         | :? TerminalNode as term ->
             if int term.Name = -1
@@ -253,7 +253,7 @@ let rec getBestTree (intToString : Dictionary<int,string>) (currentNonterm : int
                        else dummyNonterm),
                       stack,
                       Array.append left.Tree right.Tree)
-    | :? IntermidiateNode as i ->
+    | :? IntermediateNode as i ->
         let children = 
             if i.Others <> null
             then
@@ -377,7 +377,7 @@ type Tree<'TokenType> (roots : INode[], unpackPos, indToString) =
                         nodeQueue.Enqueue(new NumNode<INode>(!num, p.Left))
                     if not <| isDummy p.Right then 
                         nodeQueue.Enqueue(new NumNode<INode>(!num, p.Right))
-                | :? IntermidiateNode as i ->
+                | :? IntermediateNode as i ->
                     createNode false !num false Intermidiate (sprintf "%i,%s,%s" i.State (unpackPos <| getLeftExtension i.Extension) (unpackPos <| getRightExtension i.Extension))
                     createEdge currentPair.Ancestor !num false ""
                     if i.First <> Unchecked.defaultof<_>
@@ -685,7 +685,7 @@ type Tree<'TokenType> (roots : INode[], unpackPos, indToString) =
                 | :? PackedNode as p ->
                     if not <| isDummy p.Left then nodeQueue.Enqueue(p.Left)
                     nodeQueue.Enqueue(p.Right)
-                | :? IntermidiateNode as i ->
+                | :? IntermediateNode as i ->
                     nodeQueue.Enqueue(i.First)
                     if i.Others <> Unchecked.defaultof<_>
                     then
@@ -715,7 +715,7 @@ type Tree<'TokenType> (roots : INode[], unpackPos, indToString) =
                 minValue
             | :? PackedNode as packed ->
                 handleNode packed.Left + handleNode packed.Right
-            | :? IntermidiateNode as inter ->
+            | :? IntermediateNode as inter ->
                 inter.MapChildren handleNode |> Seq.sum
             | _ -> failwith "unsupported node type"
 
@@ -749,7 +749,7 @@ type Tree<'TokenType> (roots : INode[], unpackPos, indToString) =
                             <| stringifyChild "L" packed.Left                    
                             <| stringifyChild "R" packed.Right
                         |> idented idents
-                | :? IntermidiateNode as inter ->
+                | :? IntermediateNode as inter ->
                     let childrenStringified = 
                          inter.MapChildren(fun packed -> handleNode packed <| idents + 1) |> String.concat ""
                     sprintf "IN:\n%s"

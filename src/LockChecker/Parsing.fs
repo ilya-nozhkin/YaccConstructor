@@ -13,6 +13,10 @@ module Parsing =
         let time = System.DateTime.UtcNow
         Logging.stage "Automata construction"
         
+        let calls = if (calls < 2) then 2 else calls
+        let locks = if (locks < 2) then 2 else locks
+        let asserts = if (asserts < 2) then 2 else asserts
+        
         let factory = new AutomataFactory()
         let (~%%), (~&&), (~%), (~&), eps, (=>), (!=>), (<~>), (<|>) = factory.Combinators
     

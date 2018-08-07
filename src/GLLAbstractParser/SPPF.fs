@@ -67,7 +67,7 @@ type SPPF(startState : int<positionInGrammar>, finalStates : HashSet<int<positio
             if not contains
             then
                 let dict1 = new Dictionary<_,_>()
-                let newNode = new IntermidiateNode(state, nonterm, (packExtension lExt rExt))
+                let newNode = new IntermediateNode(state, nonterm, (packExtension lExt rExt))
                 this.Nodes.Add(newNode)
                 let num = (this.Nodes.Length - 1)*1<nodeMeasure>
                 dict1.Add((state,nonterm), num)
@@ -77,7 +77,7 @@ type SPPF(startState : int<positionInGrammar>, finalStates : HashSet<int<positio
                 let cont, n1 = n.TryGetValue((state, nonterm))
                 if not cont
                 then
-                    let newNode = new IntermidiateNode(state, nonterm, (packExtension lExt rExt))
+                    let newNode = new IntermediateNode(state, nonterm, (packExtension lExt rExt))
                     this.Nodes.Add(newNode)
                     let num = (this.Nodes.Length - 1)*1<nodeMeasure>
                     n.Add((state, nonterm), num)
@@ -96,7 +96,7 @@ type SPPF(startState : int<positionInGrammar>, finalStates : HashSet<int<positio
             match (this.Nodes.Item (int parent)) with
             | :? NonTerminalNode as n ->
                 n.AddChild newNode
-            | :? IntermidiateNode as i ->
+            | :? IntermediateNode as i ->
                 i.AddChild newNode
             | _ -> failwith "adjf;sawf"
             num
@@ -263,7 +263,7 @@ type SPPF(startState : int<positionInGrammar>, finalStates : HashSet<int<positio
                 | :? NonTerminalNode as nt -> queue.Enqueue(nt.First)
                                               if nt.Others <> null
                                               then nt.Others.ForEach(fun x -> queue.Enqueue(x))
-                | :? IntermidiateNode as interm -> queue.Enqueue(interm.First)
+                | :? IntermediateNode as interm -> queue.Enqueue(interm.First)
                                                    if interm.Others <> null
                                                    then interm.Others.ForEach(fun x -> queue.Enqueue(x))
                 | :? PackedNode as packed-> queue.Enqueue packed.Left
