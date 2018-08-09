@@ -101,6 +101,22 @@ type TokenLabeledInputGraph(initialVertices : int[], finalVertices : int[]) =
         member this.PositionToString (pos : int<positionInInput>) =
             sprintf "%i" pos
 
+type TokenLabeledInputSubGraph(basicGraph: TokenLabeledInputGraph, initialPostitions: int<positionInInput>[]) =
+    interface IParserInput with
+        member this.InitialPositions = 
+            initialPostitions
+        
+        member this.FinalPositions = 
+            (basicGraph :> IParserInput).FinalPositions
+
+        [<MethodImpl(MethodImplOptions.AggressiveInlining)>]
+        member this.ForAllOutgoingEdges curPosInInput pFun = 
+            (basicGraph :> IParserInput).ForAllOutgoingEdges curPosInInput pFun
+
+        member this.PositionToString (pos : int<positionInInput>) =
+            sprintf "%i" pos
+    
+
 type LinearInput (initialPositions, input:array<int<token>>) =
     interface IParserInput with
         member x.PositionToString(pos: int<positionInInput>): string = 

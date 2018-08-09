@@ -9,6 +9,8 @@ open LockChecker
 open Yard.Generators.Common.AutomataCombinators
 open Yard.Generators.Common.FSA.Common
 open System.IO
+open System.Linq.Expressions
+open System.Linq.Expressions
 
 (*
 ba: ASSERT
@@ -19,8 +21,41 @@ s0: C s0 RT s0 | G s0 RL s0 | ca s0 | ca | eps
 s1: C s1 RT s1 | G s0 RL s1 | eps
 
 [<Start>]
-s: ba s | s ba| s1 s | s s1 | ba | C s RT s1 | C s RT s 
+s: ba | ba s | s ba | s1 s | s s1 | C s RT s1 | C s RT s 
 *)
+
+(*
+ba: ASSERT
+ca: ASSERT
+
+s0: H s0 | G s0 RL s0 | ca | ca s0 | eps
+
+s1: H s1 | G s0 RL s1 | eps
+
+[<Start>]
+s: ba | ba s | s ba | s1 s | s s1 | C s RT | C s RT s 
+*)
+
+(*
+s0: C RT | C s0 RT | C s0 RT s0 | C RT s0 | ca | ca s0
+
+s: ba | ba s | s ba | C s RT | C s RT s | s s1 | s1 s
+*)
+
+let readStartComponents (lines: string []) =
+    let count = int lines.[lines.Length - 1]
+    let componentsInfo = lines.[lines.Length - 1 - count .. lines.Length - 2]
+    let components = 
+        componentsInfo 
+        |> Array.map 
+            (
+                fun line -> 
+                    line.Split ' ' 
+                    |> Array.filter (String.length >> ((<) 0))
+                    |> Array.map int
+            )
+    
+    components, lines.[..lines.Length - 2 - count]
 
 let parseGraphFile (graphStream: TextReader) = 
     let data =    Seq.initInfinite (fun _ -> graphStream.ReadLine()) 
@@ -29,10 +64,10 @@ let parseGraphFile (graphStream: TextReader) =
     
     let data = if data.[data.Length-1].Length < 1 then data.[..data.Length-2] else data
     
-    let infoLine = data.[data.Length-2]
-    let startVLine = data.[data.Length-1] 
+    let components, data = readStartComponents data
     
-    let edgesLines = data.[..data.Length-3]
+    let infoLine = data.[data.Length-1]
+    let edgesLines = data.[..data.Length-2]
 
     let info = infoLine.Split ' '
 
@@ -50,30 +85,46 @@ let parseGraphFile (graphStream: TextReader) =
         try int str
         with e -> 0
 
-    let startVerts = 
-        if startVLine.Length = 0 then
-            [||]
-        else
-            startVLine.Split ' ' |> Array.map tryParseInt 
+    let callsStarts = Dictionary<int, int>()
+    let returnTargets = Dictionary<int, int>()
 
     let edges = 
-        edgesLines |> Array.map (fun s -> s.Split ' ' |> fun a -> new ParserEdge<_>(int a.[0], int a.[2], stringToToken a.[1]))
+        edgesLines |> Array.map (fun s -> s.Split ' ' |> 
+            fun a -> 
+                let label = a.[1]
+                
+                try
+                    if label.StartsWith "C" then 
+                        let id = int (label.Substring 1)
+                        callsStarts.Add (id, int a.[0])
+                        
+                    if label.StartsWith "RT" then 
+                        let id = int (label.Substring 2)
+                        returnTargets.[id] <- int a.[2]
+                with e -> printfn "%s" e.Message
+                    
+                new ParserEdge<_>(int a.[0], int a.[2], stringToToken a.[1]))
 
+    let holeEdges = callsStarts |> Seq.filter (fun pair -> returnTargets.ContainsKey pair.Key) |> Seq.map (fun pair -> new ParserEdge<_>(pair.Value, returnTargets.[pair.Key], stringToToken ("H")))
+    let finalEdges = Seq.concat [holeEdges; seq edges]
+    
     Logging.log (sprintf "Graph loading time is %A" (System.DateTime.UtcNow - time))
     
-    parserSource, edges, startVerts
+    parserSource, Seq.toArray finalEdges, components
 
 let loadInput (graphStream: TextReader) =
-    let parserSource, edges, startVerts = parseGraphFile graphStream
+    let parserSource, edges, components = parseGraphFile graphStream
     
     let r = new HashSet<_>()
     let ev = edges |> Array.iter (fun e ->
         r.Add e.Source |> ignore
         r.Add e.Target |> ignore)
 
-    Logging.log (sprintf "Starts: %A" startVerts.Length)
-
-    let inputGraph = new TokenLabeledInputGraph(startVerts |> Array.filter (fun x -> r.Contains x), [||])
+    let inputGraph = new TokenLabeledInputGraph([||], [||])
     inputGraph.AddVerticesAndEdgeRange edges |> ignore
+    
+    let filteredComponents = 
+        components
+        |> Array.map (Array.filter inputGraph.ContainsVertex)
 
-    parserSource, inputGraph
+    parserSource, inputGraph, filteredComponents

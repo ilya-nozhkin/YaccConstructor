@@ -19,8 +19,54 @@ type ParserSourceGLL ( outNonterms        : (int<positionInGrammar> * int<positi
     //let getTermsDictionaryKey (state: int<positionInGrammar>) token = 
     //    int( (int state <<< 16) ||| (token - outNonterms.Length) )
     
-    let getTermsDictionaryKey (state: int<positionInGrammar>) token : int64 =
-        ((int64 state <<< 32) ||| (int64 token - int64 outNonterms.Length))
+    let getTermsDictionaryKey (state: int<positionInGrammar>) (token: int<token>) : int64 =
+        ((int64 state <<< 32) ||| (int64 (token - outNonterms.Length * 1<token>)))
+    
+    let stateOffset = 5
+    let invalidState = -10<positionInGrammar>
+    
+    let compactStateAndTokenMap = 
+        let counts = new SortedDictionary<int, int * int>()
+        let mutable maxState = 0
+        
+        for pair in stateAndTokenToNewState do
+            let mutable state, token = CommonFuns.unpack pair.Key
+            token <- token + outNonterms.Length
+            if (state + stateOffset) > maxState then
+                maxState <- (state + stateOffset)
+                
+            let contains, minmax = counts.TryGetValue state
+            if not contains then 
+                counts.Add (state, (token, token))
+            else
+                let (min, max) = minmax
+                if token > max then
+                    counts.[state] <- (min, token)
+                elif token < min then
+                    counts.[state] <- (token, max)
+                
+        let stateMap = Array.init (maxState + 1) (
+                           fun i -> 
+                               let i = i - stateOffset
+                               let contains, minmax = counts.TryGetValue i
+                               if contains then
+                                   let min, max = minmax
+                                   let tokenMap = Array.create<int<positionInGrammar>> (max - min + 2) invalidState
+                                   tokenMap.[0] <- (min - 1) * 1<positionInGrammar>
+                                   tokenMap
+                               else
+                                   Array.zeroCreate<int<positionInGrammar>> 1
+                       )
+                       
+                       
+        for pair in stateAndTokenToNewState do
+            let mutable state, token = CommonFuns.unpack pair.Key
+            token <- token + outNonterms.Length
+            state <- state + stateOffset
+            let offset = stateMap.[state].[0]
+            stateMap.[state].[token - (int offset)] <- pair.Value
+        
+        stateMap
     
     let strToToken str = 
         let isExist, value = stringToToken.TryGetValue(str)
@@ -42,7 +88,21 @@ type ParserSourceGLL ( outNonterms        : (int<positionInGrammar> * int<positi
     member this.IntToString             = intToString
     member this.GetTermsDictionaryKey   = getTermsDictionaryKey
     member this.AnyNonterm              = anyNonterm
-    member this.StateAndTokenToNewState = stateAndTokenToNewState
+    
+    member this.StateAndTokenToNewState (state: int<positionInGrammar>) (token: int<token>) =
+        let intState = (int state) + stateOffset
+        if (intState >= 0) && (intState < compactStateAndTokenMap.Length) then
+            let arrayRef = compactStateAndTokenMap.[intState]
+            let offset = int arrayRef.[0] 
+            let id = (int token) - offset
+            
+            if (id >= 1) && (id < arrayRef.Length) then 
+                arrayRef.[id]
+            else 
+                invalidState
+        else
+            invalidState
+        
     member this.StringToToken           = strToToken
     member this.MultipleInEdges         = multipleInEdges
     //member this.RightSideToRule         = rightSideToRule.Value

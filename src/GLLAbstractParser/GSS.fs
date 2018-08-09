@@ -6,6 +6,7 @@ open AbstractAnalysis.Common
 open QuickGraph
 open QuickGraph.Graphviz
 open System.Collections.Generic.Customized
+open System.Collections.Generic
 
 [<Struct>]
 type PoppedData =
@@ -28,9 +29,8 @@ type PopSet () =
         else
             false
 
-
 type GSSVertex (nonterm: int<positionInGrammar>, posInInput: int<positionInInput>) =
-    let setU = new System.Collections.Generic.Dictionary<int64<compressedPosInInputAndGrammar>,HashSet<ParseData>>()
+    let setU = new System.Collections.Generic.SortedDictionary<int64<compressedPosInInputAndGrammar>,SortedSet<ParseData>>()
     let setP = new PopSet() 
     
     override this.Equals y =
@@ -55,11 +55,13 @@ type GSSVertex (nonterm: int<positionInGrammar>, posInInput: int<positionInInput
         let compressedPositions =
             CommonFuns.pack posInInput posInGrammar 
             |> FSharp.Core.LanguagePrimitives.Int64WithMeasure  
-        let cond, data = setU.TryGetValue compressedPositions
+        let cond = setU.ContainsKey compressedPositions
         if cond
-        then not <| data.Add newData
+        then 
+            let data = setU.[compressedPositions]
+            not <| data.Add newData
         else 
-            setU.Add(compressedPositions, new HashSet<_>([|newData|]))
+            setU.Add(compressedPositions, new SortedSet<_>([|newData|]))
             false
     override this.ToString () = sprintf "Nonterm: %i, Index: %i" this.Nonterm this.PositionInInput
 

@@ -16,7 +16,7 @@ module ResultProcessing =
 
     let rec extractNonCyclicPaths (root: INode) (intToString: Dictionary<int, string>) : HashSet<string> =
         if root = null || visited.Contains root then
-            new HashSet<string>()
+            new HashSet<string>(["cycle"])
         else
             if (pathsCache.ContainsKey root) then 
                 pathsCache.[root]
@@ -26,12 +26,12 @@ module ResultProcessing =
                 let results = match root with
                     | :? EpsilonNode -> new HashSet<string>()
                     | :? TerminalNode as terminal -> 
-                        if terminal.Name <> -1<token> then
+                        if (terminal.Name = -1<token>) then
+                            new HashSet<string>()
+                        else 
                             let result = new HashSet<string>([intToString.[int terminal.Name]])
                             pathsCache.Add (root, result)
                             result
-                        else 
-                            new HashSet<_>()
                     | :? PackedNode as packed -> 
                         let left = extractNonCyclicPaths packed.Left intToString
                         let right = extractNonCyclicPaths packed.Right intToString
@@ -66,11 +66,11 @@ module ResultProcessing =
                             result
                         else 
                             new HashSet<_>()
-                    | _ -> failwith ""
+                    | _ -> failwith "a"
                     
                 visited.Remove root |> ignore
                 
-                if results.Count > 100 then
-                    new HashSet<string>(Seq.take 100 results)
+                if results.Count > 10 then
+                    new HashSet<string>(Seq.take 10 results)
                 else
                     results

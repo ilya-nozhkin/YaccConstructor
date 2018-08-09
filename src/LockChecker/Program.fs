@@ -15,9 +15,6 @@ open LockChecker.Graph
 open System.IO
 open System
 
-let parseGraph parserSource inputGraph =
-    getAllSPPFRootsAsINodes parserSource inputGraph
-
 let printAllPaths (roots: INode []) (parserSource: ParserSourceGLL) (outputStream: TextWriter) = 
     if roots.Length < 1
     then 
@@ -48,7 +45,7 @@ type optionsSet = {
 let startAsConsoleApplication options = 
     let inputStream = new StreamReader (options.graphFile) :> TextReader
 
-    let parserSource, inputGraph = loadInput inputStream
+    let parserSource, inputGraph, components = loadInput inputStream
 
     (*if options.drawGraph then
         printGraph inputGraph options.graphOutput*)
@@ -56,7 +53,7 @@ let startAsConsoleApplication options =
     let start = System.DateTime.Now
     Logging.stage "Parsing"
 
-    let roots = parseGraph parserSource inputGraph
+    let roots = Parsing.parseGraph parserSource inputGraph components
 
     Logging.log (sprintf "Parsing time: %A" (System.DateTime.Now - start))
 
@@ -119,12 +116,13 @@ let main argv =
             }
         
         if options.asService then
-            let graph = new CustomControlFlowGraph()
+            let graph = new QuickControlflowGraph()
             let serviceHost = new ServiceHost(graph, options.port)
             serviceHost.Start()
         else 
             startAsConsoleApplication options
     with e ->
         printfn "%s" e.Message
+        raise e
         
     0

@@ -98,7 +98,7 @@ type ServiceHost(graph: IControlFlowGraph, port) =
         let parserSource = Parsing.generateParser statistics.calls statistics.locks statistics.asserts
         graph.SetTokenizer parserSource.StringToToken
         
-        let roots = Parsing.parseGraph parserSource graph
+        let roots = Parsing.parseAbstractInput parserSource graph
         
         let results = 
             let temporaryResults = new HashSet<_>()
@@ -120,9 +120,13 @@ type ServiceHost(graph: IControlFlowGraph, port) =
         use writer = new StreamWriter(stream)
         
         while isProcess do
-            let messageType = reader.ReadLine()
-            let data = reader.ReadLine()
+            let mutable messageType = reader.ReadLine()
+            let mutable data = reader.ReadLine()
             let mutable success = false
+            
+            if messageType = null then 
+                messageType <- "terminate"
+                data <- ""
             
             try
                 use dataStream = new MemoryStream(System.Text.Encoding.ASCII.GetBytes(data))
@@ -153,6 +157,9 @@ type ServiceHost(graph: IControlFlowGraph, port) =
                     performParsing writer
                     success <- true
                 | "terminate" ->
+                    use fileStream = new FileStream ("graph.dump", FileMode.Create)
+                    graph.Serialize fileStream
+                    
                     isProcess <- false
                     success <- true
                 | _ -> ()
