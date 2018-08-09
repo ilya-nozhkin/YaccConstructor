@@ -60,7 +60,7 @@ type AddEdgePackMessage =
 type RunAnalysisMessage =
     {
         [<field: DataMember(Name="starts")>]
-        starts: int []
+        starts: int [] []
     }
     static member JsonReader = DataContractJsonSerializer(typeof<RunAnalysisMessage>)
     static member FromJson (source: Stream) =
@@ -86,19 +86,23 @@ type UpdateDecoderMessage =
     static member FromJson (source: Stream) =
         UpdateDecoderMessage.JsonReader.ReadObject(source) :?> UpdateDecoderMessage
 
-type ServiceHost(graph: IControlFlowGraph, port) =
+type ServiceHost(graphProvider: unit -> IControlFlowGraph, port) =
     let socket = TcpListener.Create (port)
     let mutable client = null
     let mutable isProcess = true
+    let mutable graph: IControlFlowGraph = graphProvider()
     
     let performParsing (writer : StreamWriter) =
-        graph.PrepareForParsing()
-        
         let statistics = graph.GetStatistics()
         let parserSource = Parsing.generateParser statistics.calls statistics.locks statistics.asserts
         graph.SetTokenizer parserSource.StringToToken
         
-        let roots = Parsing.parseAbstractInput parserSource graph
+        graph.PrepareForParsing()
+        
+        let parallelTasks = 2
+        let inputs = graph.GetParserInputs parallelTasks
+        
+        let roots = Parsing.parseAbstractInputsParallel parserSource inputs
         
         let results = 
             let temporaryResults = new HashSet<_>()
@@ -161,6 +165,9 @@ type ServiceHost(graph: IControlFlowGraph, port) =
                     graph.Serialize fileStream
                     
                     isProcess <- false
+                    success <- true
+                | "reset" ->
+                    graph <- graphProvider()
                     success <- true
                 | _ -> ()
             with e -> printfn "%s" e.Message

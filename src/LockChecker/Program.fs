@@ -116,8 +116,7 @@ let main argv =
             }
         
         if options.asService then
-            let graph = new QuickControlflowGraph()
-            let serviceHost = new ServiceHost(graph, options.port)
+            let serviceHost = new ServiceHost((fun () -> new QuickControlflowGraph() :> IControlFlowGraph), options.port)
             serviceHost.Start()
         else 
             startAsConsoleApplication options

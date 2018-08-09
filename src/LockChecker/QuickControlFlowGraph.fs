@@ -10,16 +10,40 @@ open System.IO
 open QuickGraph
 open System.Runtime.Serialization
 open System.Runtime.CompilerServices
-open System.Text
 
 type QuickEdge(rawEdge: RawEdge) = 
     inherit TaggedEdge<int, string>(rawEdge.startNode, rawEdge.endNode, rawEdge.label)
+    
+    let mutable token = -1<token>
+    
+    member this.Token = token
+    member this.SetToken newToken = token <- newToken
 
 type QuickMethod =
     {
         info: Method
         nodes: SortedSet<int>
     }
+    
+type QuickParserInput(starts, dynamicEdgesIndex: QuickEdge [] []) = 
+    interface IParserInput with
+        member this.InitialPositions = 
+            starts |> Seq.map(fun x -> x * 1<positionInInput>) |> Seq.toArray
+        
+        member this.FinalPositions = 
+            [||]
+
+        [<MethodImpl(MethodImplOptions.AggressiveInlining)>]
+        member this.ForAllOutgoingEdges curPosInInput pFun =
+            let edges = dynamicEdgesIndex.[int curPosInInput]
+            edges |> Seq.iter
+                (
+                    fun e -> 
+                        pFun e.Token (e.Target * 1<positionInInput>)
+                )
+
+        member this.PositionToString (pos : int<positionInInput>) =
+            sprintf "%i" pos
 
 type QuickControlflowGraph() =
     inherit BidirectionalGraph<int, QuickEdge>()
@@ -35,7 +59,7 @@ type QuickControlflowGraph() =
     let mutable maxAssert = 0
     
     let mutable myTokenizer: string -> int<token> = fun _ -> 0<token>
-    let mutable myStarts: int [] = null
+    let mutable myStarts: int [] [] = null
     
     let addEdgeToStatistics (edge: QuickEdge) =
         if edge.Tag.StartsWith "C" then 
@@ -74,7 +98,7 @@ type QuickControlflowGraph() =
         owners.Remove node |> ignore
         this.RemoveVertex node |> ignore
         
-    member private this.CleanMethod name removeStart =
+    member private this.ClearMethod name removeStart =
         let method = methods.[name]
         
         for node in method.nodes do
@@ -161,32 +185,38 @@ type QuickControlflowGraph() =
                         let edge = QuickEdge rawEdge
                         addEdgeToStatistics edge
                         edge
-                ) |> this.AddVerticesAndEdgeRange |> ignore
+                ) |> this.AddEdgeRange |> ignore
         
         member this.AddMethod method edges =
             let referencedNodes = this.AddMethodBody method edges
             let quickMethod = {info = method; nodes = new SortedSet<int>()}
             
+            method.startNode |> this.AddVertex |> ignore
             method.startNode |> (setNodeOwner quickMethod true)
+            method.finalNodes |> Seq.iter (this.AddVertex >> ignore)
             method.finalNodes |> Seq.iter (setNodeOwner quickMethod true)
+            
             referencedNodes |> Seq.iter (setNodeOwner quickMethod false)
             
             methods.Add (method.name, quickMethod)
             
         member this.AlterMethod method edges =
-            this.CleanMethod method.name false
+            this.ClearMethod method.name false
             
             let referencedNodes = this.AddMethodBody method edges
             let quickMethod = {info = method; nodes = new SortedSet<int>()}
             
+            method.startNode |> this.AddVertex |> ignore
             method.startNode |> (setNodeOwner quickMethod true)
+            method.finalNodes |> Seq.iter (this.AddVertex >> ignore)
             method.finalNodes |> Seq.iter (setNodeOwner quickMethod true)
+            
             referencedNodes |> Seq.iter (setNodeOwner quickMethod false)
             
             methods.[method.name] <- quickMethod
             
         member this.RemoveMethod name =
-            this.CleanMethod name true
+            this.ClearMethod name true
             methods.Remove name |> ignore
             
         member this.GetStatistics() = 
@@ -204,6 +234,8 @@ type QuickControlflowGraph() =
                     fun pair -> 
                         let key = pair.Key
                         let success, edges = this.TryGetOutEdges key
+                        for edge in edges do
+                            edge.SetToken (myTokenizer edge.Tag)
                         dynamicEdgesIndex.[key] <- (Seq.toArray edges)
                 )
             
@@ -216,21 +248,18 @@ type QuickControlflowGraph() =
         member this.SetStarts starts =
             myStarts <- starts
             
-    interface IParserInput with
-        member this.InitialPositions = 
-            myStarts |> Seq.map(fun x -> x * 1<positionInInput>) |> Seq.toArray
-        
-        member this.FinalPositions = 
-            [||]
-
-        [<MethodImpl(MethodImplOptions.AggressiveInlining)>]
-        member this.ForAllOutgoingEdges curPosInInput pFun =
-            let edges = dynamicEdgesIndex.[int curPosInInput]
-            edges |> Seq.iter
-                (
-                    fun e -> 
-                        pFun (myTokenizer e.Tag) (e.Target * 1<positionInInput>)
-                )
-
-        member this.PositionToString (pos : int<positionInInput>) =
-            sprintf "%i" pos
+        member this.GetParserInputs count =
+            let count = min count myStarts.Length
+            let chunkSize = myStarts.Length / count
+            
+            [|0..count - 1|]
+            |> Array.map
+               (
+                   fun id ->
+                       let subArraySize = min (myStarts.Length - (id * chunkSize)) chunkSize
+                       let starts = 
+                           Array.sub myStarts (id * chunkSize) subArraySize 
+                           |> Array.concat
+                       QuickParserInput(starts, dynamicEdgesIndex)
+                       :> IParserInput
+            )

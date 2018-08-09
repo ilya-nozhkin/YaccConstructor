@@ -126,8 +126,30 @@ module Parsing =
 
         parser
     
-    let parseAbstractInput parserSource input =
-        getAllSPPFRootsAsINodes parserSource input 
+    let parseAbstractInputsParallel parserSource (inputs: IParserInput []) =
+        let tasks = 
+            inputs
+            |> Array.map
+                (
+                    fun input ->
+                        let task = 
+                            Task.Factory.StartNew (
+                                fun () -> 
+                                    getAllSPPFRootsAsINodes parserSource input
+                            )
+                        task
+                )
+        
+        let results = 
+            tasks 
+            |> Array.collect 
+                (
+                    fun task ->
+                        task.Wait()
+                        task.Result
+                )
+        
+        results
         
     let parseGraph parserSource (inputGraph: TokenLabeledInputGraph) (components: int [] []) =
         let parallelTasks = min 2 components.Length

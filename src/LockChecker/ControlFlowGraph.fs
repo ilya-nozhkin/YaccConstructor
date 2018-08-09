@@ -46,8 +46,6 @@ type GraphStatistics =
     }
     
 type IControlFlowGraph =
-    inherit IParserInput
-    
     abstract member Serialize: Stream -> unit
     abstract member Deserialize: Stream -> unit
     
@@ -63,4 +61,6 @@ type IControlFlowGraph =
     abstract member CleanUpAfterParsing: unit -> unit
     
     abstract member SetTokenizer: (string -> int<token>) -> unit
-    abstract member SetStarts: int [] -> unit
+    abstract member SetStarts: int [] [] -> unit
+    
+    abstract member GetParserInputs: int -> IParserInput []
