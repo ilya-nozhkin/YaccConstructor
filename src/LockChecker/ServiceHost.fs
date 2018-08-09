@@ -7,7 +7,6 @@ open System.Runtime.Serialization.Json
 open System.Runtime.Serialization
 open System.Collections.Generic
 
-open System.Xml
 open LockChecker.Graph
 
 [<DataContract>]
@@ -132,6 +131,10 @@ type ServiceHost(graphProvider: unit -> IControlFlowGraph, port) =
                 messageType <- "terminate"
                 data <- ""
             
+            printfn "incoming message:"
+            printfn "%s" messageType
+            printfn "%s" data
+            
             try
                 use dataStream = new MemoryStream(System.Text.Encoding.ASCII.GetBytes(data))
                 match messageType with
@@ -174,8 +177,10 @@ type ServiceHost(graphProvider: unit -> IControlFlowGraph, port) =
             
             if success then
                 writer.WriteLine("success")
+                printfn "success"
             else
                 writer.WriteLine("failure")
+                printfn "failure"
                 
             writer.Flush()
                 
