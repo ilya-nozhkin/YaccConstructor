@@ -8,13 +8,12 @@ open System.Collections.Generic
 open Yard.Generators.Common.ASTGLLFSA
 open Yard.Generators.GLL.ParserCommon
 
-open ResultProcessing
 open InputLoading
+open LockChecker
+open LockChecker
+open LockChecker.Graph
 open System.IO
 open System
-
-let parseGraph parserSource inputGraph =
-    getAllSPPFRootsAsINodes parserSource inputGraph
 
 let printAllPaths (roots: INode []) (parserSource: ParserSourceGLL) (outputStream: TextWriter) = 
     if roots.Length < 1
@@ -25,29 +24,12 @@ let printAllPaths (roots: INode []) (parserSource: ParserSourceGLL) (outputStrea
         let result = 
             let res = new HashSet<_>()
             roots
-            |> Array.map (fun x -> allPathsForRoot x parserSource.IntToString)
+            |> Array.map (fun x -> ResultProcessing.extractNonCyclicPaths x parserSource.IntToString)
             |> Array.iter (fun s -> res.UnionWith s)
             res
 
         result |> Seq.iter (outputStream.WriteLine)
-
-let printAllBadAsserts (roots: INode []) (parserSource: ParserSourceGLL) outputFile = 
-    if roots.Length < 1
-    then 
-        printfn "doesn't parsed"
-        System.IO.File.WriteAllLines(outputFile, [""])
-    else
-        let result = 
-            roots
-            |> Array.collect(fun root -> getBadAsserts root parserSource.IntToString)
-            |> Array.map(fun x -> System.String.Join("; ", x))
-            |> Array.distinct
-
-        System.IO.File.WriteAllLines(outputFile, result)
-
-let printGraph (graph : SimpleInputGraph<_>) (file : string) = 
-    graph.PrintToDot file id
-
+ 
 type optionsSet = {
     graphFile: string;
     verbose: bool;
@@ -56,37 +38,27 @@ type optionsSet = {
     useStdout: bool;
     pathsOutput: string;
     drawGraph: bool;
-    graphOutput: string}
- 
-let startExecution options = 
-    let log message =
-        if options.verbose then
-            printfn "%s" message
-     
-    let stage name = 
-        if options.printStages then
-            printfn "stage: %s" name
+    graphOutput: string;
+    asService: bool;
+    port: int}
     
-    let inputStream = 
-        if (options.useStdin) then
-            Console.In
-        else 
-            new StreamReader (options.graphFile) :> TextReader
+let startAsConsoleApplication options = 
+    let inputStream = new StreamReader (options.graphFile) :> TextReader
 
-    let parserSource, inputGraph = loadInput inputStream log stage
+    let parserSource, inputGraph, components = loadInput inputStream
 
     (*if options.drawGraph then
         printGraph inputGraph options.graphOutput*)
 
     let start = System.DateTime.Now
-    stage "Parsing"
+    Logging.stage "Parsing"
 
-    let roots = parseGraph parserSource inputGraph
+    let roots = Parsing.parseGraph parserSource inputGraph components
 
-    log (sprintf "Parsing time: %A" (System.DateTime.Now - start))
+    Logging.log (sprintf "Parsing time: %A" (System.DateTime.Now - start))
 
     let start = System.DateTime.Now
-    stage "Processing"
+    Logging.stage "Processing"
 
     let outputStream =
         if options.useStdout then
@@ -97,13 +69,15 @@ let startExecution options =
     printAllPaths roots parserSource outputStream
     outputStream.Close()
 
-    log (sprintf "Processing time: %A" (System.DateTime.Now - start))
-
+    Logging.log (sprintf "Processing time: %A" (System.DateTime.Now - start))
+    
 type CLIArguments =
     | [<Unique; AltCommandLine("-v")>] Verbose 
     | Output_Path of path: string
     | Draw_Graph of path: string
     | Print_Stages
+    | As_Service
+    | Port of int
     | [<MainCommand; Last>] Graph_File of path:string
 with
     interface IArgParserTemplate with   
@@ -114,27 +88,36 @@ with
             | Draw_Graph path -> "Print source graph in the .dot format"
             | Print_Stages -> "Print stage name when each of them starts"
             | Graph_File path -> "Path to graph that should be parsed"
+            | As_Service -> "Run Lock Checker as service that can be accessed through socket"
+            | Port _ -> "Set port where the service will be located"
+
+open System.Net
+open System.Threading
 
 [<EntryPoint>]
 let main argv =
     let parser = ArgumentParser.Create<CLIArguments>(programName = "LockChecker")
 
-    try
-        let results = parser.Parse argv
+    let results = parser.Parse argv
 
-        let options = 
-            {
-                verbose = results.Contains Verbose
-                useStdin = not (results.Contains Graph_File)
-                useStdout = not (results.Contains Output_Path)
-                printStages = results.Contains Print_Stages
-                drawGraph = results.Contains Draw_Graph
-                graphFile = results.GetResult (Graph_File, defaultValue = "")
-                pathsOutput = results.GetResult (Output_Path, defaultValue = "")
-                graphOutput = results.GetResult (Draw_Graph, defaultValue = "")
-            }
-
-        startExecution options
-    with e ->
-        printfn "%s" e.Message
+    let options = 
+        {
+            verbose = results.Contains Verbose
+            useStdin = not (results.Contains Graph_File)
+            useStdout = not (results.Contains Output_Path)
+            printStages = results.Contains Print_Stages
+            drawGraph = results.Contains Draw_Graph
+            graphFile = results.GetResult (Graph_File, defaultValue = "")
+            pathsOutput = results.GetResult (Output_Path, defaultValue = "")
+            graphOutput = results.GetResult (Draw_Graph, defaultValue = "")
+            asService = results.Contains As_Service
+            port = results.GetResult (Port, defaultValue = 8888)
+        }
+    
+    if options.asService then
+        let serviceHost = new ServiceHost((fun () -> new QuickControlflowGraph() :> IControlFlowGraph), options.port)
+        serviceHost.Start()
+    else 
+        startAsConsoleApplication options
+        
     0

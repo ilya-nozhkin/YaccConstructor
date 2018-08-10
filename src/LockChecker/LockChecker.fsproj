@@ -1,25 +1,28 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
-    <TargetFramework>netcoreapp2.1</TargetFramework>
+    <TargetFramework>net461</TargetFramework>
     <OutputType>Exe</OutputType>
   </PropertyGroup>
-
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
     <NoWarn>NU1701</NoWarn>
   </PropertyGroup>
-
   <ItemGroup>
     <Compile Include="AssemblyInfo.fs" />
-    <Compile Include="InputLoading.fs" />
+    <Compile Include="Logging.fs" />
+    <Compile Include="Parsing.fs" />
+    <Compile Include="ControlFlowGraph.fs" />
+    <Compile Include="QuickControlFlowGraph.fs" />
+    <Compile Include="CustomGraph.fs" />
     <Compile Include="ResultProcessing.fs" />
+    <Compile Include="ServiceHost.fs" />
+    <Compile Include="InputLoading.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
-
   <ItemGroup>
     <PackageReference Include="Argu" Version="5.1.0" />
+    <PackageReference Include="System.ServiceModel.Primitives" Version="4.5.3" />
+    <PackageReference Include="System.ServiceModel.Web" Version="1.0.0" />
   </ItemGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\AST.Common\Common.AST.fsproj">
       <Private>true</Private>
@@ -34,19 +37,15 @@
       <Private>true</Private>
     </ProjectReference>
   </ItemGroup>
-
   <ItemGroup>
     <PackageReference Update="FSharp.Core" Version="4.5.0" />
     <PackageReference Update="System.ValueTuple" Version="4.5.0" />
   </ItemGroup>
-  
   <Target Name="PostBuild" BeforeTargets="PostBuildEvent">
     <Exec Command="dotnet publish --no-build -c $(Configuration)" />
-    
     <ItemGroup>
       <Binaries Include="$(OutputPath)\publish\*.dll;$(OutputPath)\publish\*.exe;$(OutputPath)\publish\*.config;$(OutputPath)\publish\*.runtimeconfig.json" />
-    </ItemGroup>   
-
+    </ItemGroup>
     <Copy SourceFiles="@(Binaries)" DestinationFolder="bin\app" />
   </Target>
 </Project>

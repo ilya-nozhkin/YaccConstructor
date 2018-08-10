@@ -168,8 +168,8 @@ let parse (parser : ParserSourceGLL) (input : IParserInput) (buildTree : bool) =
         input.ForAllOutgoingEdges
             currentContext.PosInInput
             (fun nextToken nextPosInInput -> 
-                let isTransitionPossible, nextPosInGrammar = parser.StateAndTokenToNewState.TryGetValue (parser.GetTermsDictionaryKey currentContext.PosInGrammar (int nextToken))
-                if isTransitionPossible
+                let nextPosInGrammar = parser.StateAndTokenToNewState currentContext.PosInGrammar nextToken
+                if nextPosInGrammar <> -10<positionInGrammar>
                 then eatTerm currentContext nextToken nextPosInInput nextPosInGrammar
                    //pushContext nextPosInInput nextPosInGrammar currentContext.GssVertex (currentContext.Length + 1us)
             )

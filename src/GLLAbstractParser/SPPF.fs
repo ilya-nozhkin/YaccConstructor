@@ -21,9 +21,9 @@ type SPPF(startState : int<positionInGrammar>, finalStates : HashSet<int<positio
         | TreeNode x -> x
         | _ -> failwith "Wrong type"
 
-    let nonTerminalNodes = new SortedDictionary<int64<extension>, Dictionary<int<positionInGrammar>,int<nodeMeasure>>>()
-    let intermidiateNodes = new SortedDictionary<int64<extension>, Dictionary<int<positionInGrammar> * int<positionInGrammar>, int<nodeMeasure>>>()
-    let terminalNodes = new SortedDictionary<int64<extension>, Dictionary<int<token>,int<nodeMeasure>>>()
+    let nonTerminalNodes = new SortedDictionary<int64<extension>, SortedDictionary<int<positionInGrammar>,int<nodeMeasure>>>()
+    let intermidiateNodes = new SortedDictionary<int64<extension>, SortedDictionary<int64, int<nodeMeasure>>>()
+    let terminalNodes = new SortedDictionary<int64<extension>, SortedDictionary<int<token>,int<nodeMeasure>>>()
     let epsilonNodes = new SortedDictionary<int, int<nodeMeasure>>()
     let nodes = new BlockResizeArray<INode>()
 
@@ -40,10 +40,10 @@ type SPPF(startState : int<positionInGrammar>, finalStates : HashSet<int<positio
         match t with 
         | Nonterm state ->
             let hash = packExtension lExt rExt 
-            let contains, n = this.NonTerminalNodes.TryGetValue hash
+            let contains = this.NonTerminalNodes.ContainsKey hash
             if not contains
             then
-                let dict1 = new Dictionary<_,_>()
+                let dict1 = new SortedDictionary<_,_>()
                 let newNode = new NonTerminalNode(state, (packExtension lExt rExt))
                 let num = this.Nodes.Length *1<nodeMeasure>
                 dict1.Add(state,num)
@@ -51,6 +51,7 @@ type SPPF(startState : int<positionInGrammar>, finalStates : HashSet<int<positio
                 this.NonTerminalNodes.Add(hash, dict1)
                 num
             else
+                let n = this.NonTerminalNodes.[hash]
                 let cont, n1 = n.TryGetValue state
                 if not cont
                 then
@@ -63,24 +64,25 @@ type SPPF(startState : int<positionInGrammar>, finalStates : HashSet<int<positio
                     n1
         | Intermed (state, nonterm) -> 
             let hash = packExtension lExt rExt
-            let contains, n = this.IntermidiateNodes.TryGetValue hash
+            let contains = this.IntermidiateNodes.ContainsKey hash
             if not contains
             then
-                let dict1 = new Dictionary<_,_>()
-                let newNode = new IntermidiateNode(state, nonterm, (packExtension lExt rExt))
+                let dict1 = new SortedDictionary<_,_>()
+                let newNode = new IntermediateNode(state, nonterm, (packExtension lExt rExt))
                 this.Nodes.Add(newNode)
                 let num = (this.Nodes.Length - 1)*1<nodeMeasure>
-                dict1.Add((state,nonterm), num)
+                dict1.Add(pack state nonterm, num)
                 this.IntermidiateNodes.Add(hash, dict1)
                 num  
             else
-                let cont, n1 = n.TryGetValue((state, nonterm))
+                let n = this.IntermidiateNodes.[hash]
+                let cont, n1 = n.TryGetValue(pack state nonterm)
                 if not cont
                 then
-                    let newNode = new IntermidiateNode(state, nonterm, (packExtension lExt rExt))
+                    let newNode = new IntermediateNode(state, nonterm, (packExtension lExt rExt))
                     this.Nodes.Add(newNode)
                     let num = (this.Nodes.Length - 1)*1<nodeMeasure>
-                    n.Add((state, nonterm), num)
+                    n.Add(pack state nonterm, num)
                     num  
                 else
                     n1
@@ -96,7 +98,7 @@ type SPPF(startState : int<positionInGrammar>, finalStates : HashSet<int<positio
             match (this.Nodes.Item (int parent)) with
             | :? NonTerminalNode as n ->
                 n.AddChild newNode
-            | :? IntermidiateNode as i ->
+            | :? IntermediateNode as i ->
                 i.AddChild newNode
             | _ -> failwith "adjf;sawf"
             num
@@ -123,7 +125,7 @@ type SPPF(startState : int<positionInGrammar>, finalStates : HashSet<int<positio
             let contains, v = this.TerminalNodes.TryGetValue hash
             if not contains
             then
-                let dict1 = new Dictionary<_,_>()
+                let dict1 = new SortedDictionary<_,_>()
                 let t = new TerminalNode(symbol, packExtension pos nextPos)
                 let res = this.Nodes.Length *1<nodeMeasure>
                 dict1.Add(symbol, res)
@@ -263,7 +265,7 @@ type SPPF(startState : int<positionInGrammar>, finalStates : HashSet<int<positio
                 | :? NonTerminalNode as nt -> queue.Enqueue(nt.First)
                                               if nt.Others <> null
                                               then nt.Others.ForEach(fun x -> queue.Enqueue(x))
-                | :? IntermidiateNode as interm -> queue.Enqueue(interm.First)
+                | :? IntermediateNode as interm -> queue.Enqueue(interm.First)
                                                    if interm.Others <> null
                                                    then interm.Others.ForEach(fun x -> queue.Enqueue(x))
                 | :? PackedNode as packed-> queue.Enqueue packed.Left
