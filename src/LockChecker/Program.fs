@@ -98,30 +98,26 @@ open System.Threading
 let main argv =
     let parser = ArgumentParser.Create<CLIArguments>(programName = "LockChecker")
 
-    try
-        let results = parser.Parse argv
+    let results = parser.Parse argv
 
-        let options = 
-            {
-                verbose = results.Contains Verbose
-                useStdin = not (results.Contains Graph_File)
-                useStdout = not (results.Contains Output_Path)
-                printStages = results.Contains Print_Stages
-                drawGraph = results.Contains Draw_Graph
-                graphFile = results.GetResult (Graph_File, defaultValue = "")
-                pathsOutput = results.GetResult (Output_Path, defaultValue = "")
-                graphOutput = results.GetResult (Draw_Graph, defaultValue = "")
-                asService = results.Contains As_Service
-                port = results.GetResult (Port, defaultValue = 8888)
-            }
-        
-        if options.asService then
-            let serviceHost = new ServiceHost((fun () -> new QuickControlflowGraph() :> IControlFlowGraph), options.port)
-            serviceHost.Start()
-        else 
-            startAsConsoleApplication options
-    with e ->
-        printfn "%s" e.Message
-        raise e
+    let options = 
+        {
+            verbose = results.Contains Verbose
+            useStdin = not (results.Contains Graph_File)
+            useStdout = not (results.Contains Output_Path)
+            printStages = results.Contains Print_Stages
+            drawGraph = results.Contains Draw_Graph
+            graphFile = results.GetResult (Graph_File, defaultValue = "")
+            pathsOutput = results.GetResult (Output_Path, defaultValue = "")
+            graphOutput = results.GetResult (Draw_Graph, defaultValue = "")
+            asService = results.Contains As_Service
+            port = results.GetResult (Port, defaultValue = 8888)
+        }
+    
+    if options.asService then
+        let serviceHost = new ServiceHost((fun () -> new QuickControlflowGraph() :> IControlFlowGraph), options.port)
+        serviceHost.Start()
+    else 
+        startAsConsoleApplication options
         
     0
