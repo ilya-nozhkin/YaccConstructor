@@ -68,12 +68,11 @@ module Parsing =
         let ss = &&"ss"
         let s = &&"s"
         
-        
         "ba" => asserts
         "ca" => asserts
-        "s0i" => ((%(%%"H") <|> &ca <|> &s0) <~> (&s0i <|> eps))
+        "s0i" => ((%(%%"E") <|> &ca <|> &s0) <~> (&s0i <|> eps))
         "s0" => (brackets2 locks getTokens s0i releaseTokens)
-        "s1" => ((%(%%"H") <|> &s0) <~> (&s1 <|> eps))
+        "s1" => ((%(%%"E") <|> &s0) <~> (&s1 <|> eps))
         "ss" => ((&ba <|> (brackets calls callTokens s returnTokens)))
         "s" !=> (((&s1 <~> &ss) <|> &ss) <~> (&s1 <|> eps))
     
