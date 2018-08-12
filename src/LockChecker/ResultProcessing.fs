@@ -15,37 +15,37 @@ module ResultProcessing =
         let visited = new HashSet<INode>()
         let pathsCache = new Dictionary<INode, HashSet<string>>();
         
-        let rec extractNonCyclicPathsInternal (node: INode) =
+        let rec extractNonCyclicPathsInternal (node: INode): HashSet<string> option =
             if visited.Contains node then
-                new HashSet<string>(["cycle"])
+                None
             else
                 if (pathsCache.ContainsKey node) then 
-                    pathsCache.[node]
+                    Some pathsCache.[node]
                 else
                     let results = match node with
-                        | :? EpsilonNode -> new HashSet<string>()
+                        | :? EpsilonNode -> Some (HashSet<string>())
                         | :? TerminalNode as terminal -> 
                             if (terminal.Name = -1<token>) then
-                                new HashSet<string>()
+                                Some (HashSet<string>())
                             else 
                                 let result = new HashSet<string>([intToString.[int terminal.Name]])
                                 pathsCache.Add (node, result)
-                                result
+                                Some result
                         | :? PackedNode as packed -> 
                             let left = extractNonCyclicPathsInternal packed.Left
                             let right = extractNonCyclicPathsInternal packed.Right
                             
-                            if left <> null && right <> null then
-                                if   left.Count = 0  then right
-                                elif right.Count = 0 then left
+                            if left.IsSome && right.IsSome then
+                                if   left.Value.Count = 0  then right
+                                elif right.Value.Count = 0 then left
                                 else
                                     let result = new HashSet<string>()
-                                    for leftPart in left do
-                                        for rightPart in right do
+                                    for leftPart in left.Value do
+                                        for rightPart in right.Value do
                                             result.Add (leftPart + " " + rightPart) |> ignore
-                                    result
+                                    Some result
                             else
-                                null
+                                None
                         | :? IntermediateNode | :? NonTerminalNode ->
                             let mutable isS1 = false
                             
@@ -63,11 +63,9 @@ module ResultProcessing =
 
                                 let result = new HashSet<string>()
                                 let pathSets = 
-                                    mapOverChildren (
-                                        fun child ->
-                                            extractNonCyclicPathsInternal child
-                                            |> Seq.filter (fun str -> not (str.Contains "cycle"))
-                                    )
+                                    mapOverChildren (fun child -> extractNonCyclicPathsInternal child)
+                                    |> Seq.filter Option.isSome
+                                    |> Seq.map Option.get
                                 
                                 for pathSet in pathSets do
                                     result.UnionWith pathSet
@@ -76,18 +74,18 @@ module ResultProcessing =
                                 
                                 visited.Remove node |> ignore
                                 
-                                result
+                                Some result
                             else 
-                                new HashSet<_>()
+                                Some (HashSet<string>())
                         | _ -> failwith "a"
                         
-                    if results.Count > 10 then
-                        new HashSet<string>(Seq.take 10 results)
-                    else
-                        results
+                    if results.IsSome then
+                        if results.Value.Count > 10 then
+                            Some (HashSet<string>(Seq.take 10 results.Value))
+                        else
+                            results
+                    else 
+                        None
                         
         let extractionResults = extractNonCyclicPathsInternal root
-        if extractionResults = null then 
-            new HashSet<string>()
-        else 
-            extractionResults
+        Option.defaultValue (HashSet<string>()) extractionResults
