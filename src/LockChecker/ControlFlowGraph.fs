@@ -53,6 +53,9 @@ type IControlFlowGraph =
     abstract member AlterMethod: Method -> RawEdge [] -> unit
     abstract member RemoveMethod: string -> unit
     
+    abstract member UpdateFileInfo: string -> Set<string> -> unit
+    abstract member GetFileInfo: string -> Set<string>
+    
     abstract member AddEdges: RawEdge [] -> unit
    
     abstract member GetStatistics: unit -> GraphStatistics

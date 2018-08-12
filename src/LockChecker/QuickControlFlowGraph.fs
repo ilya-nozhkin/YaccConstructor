@@ -19,11 +19,21 @@ type QuickEdge(rawEdge: RawEdge) =
     member this.Token = token
     member this.SetToken newToken = token <- newToken
 
+[<CustomEquality; NoComparison>]
 type QuickMethod =
     {
         info: Method
         nodes: SortedSet<int>
     }
+    
+    override this.Equals obj =
+        match obj with 
+        | :? QuickMethod as method ->
+            this.info.name = method.info.name
+        | _ -> false
+        
+    override this.GetHashCode() =
+        this.info.name.GetHashCode()
     
 type QuickParserInput(starts, dynamicEdgesIndex: QuickEdge [] []) = 
     interface IParserInput with
@@ -48,6 +58,7 @@ type QuickParserInput(starts, dynamicEdgesIndex: QuickEdge [] []) =
 type QuickControlflowGraph() =
     inherit BidirectionalGraph<int, QuickEdge>()
     
+    let files = Dictionary<string, HashSet<QuickMethod>>()
     let methods = Dictionary<string, QuickMethod>()
     let owners = SortedDictionary<int, QuickMethod>()
     
@@ -218,6 +229,22 @@ type QuickControlflowGraph() =
         member this.RemoveMethod name =
             this.ClearMethod name true
             methods.Remove name |> ignore
+        
+        member this.UpdateFileInfo fileName methodNames =
+            let methods = 
+                methodNames 
+                |> Seq.map (fun name -> methods.[name])
+                |> HashSet<QuickMethod>
+                
+            files.[fileName] <- methods
+        
+        member this.GetFileInfo fileName =
+            if files.ContainsKey fileName then
+                files.[fileName]
+                |> Seq.map (fun method -> method.info.name)
+                |> set
+            else 
+                Set.empty
             
         member this.GetStatistics() = 
             {
@@ -246,7 +273,10 @@ type QuickControlflowGraph() =
             myTokenizer <- tokenizer
             
         member this.SetStarts starts =
-            myStarts <- starts
+            //myStarts <- starts
+            
+            let starts = files |> Seq.collect (fun pair -> pair.Value |> Seq.map (fun method -> method.info.startNode))
+            myStarts <- [|Array.ofSeq starts|]
             
         member this.GetParserInputs count =
             let count = min count myStarts.Length
