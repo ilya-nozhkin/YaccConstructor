@@ -10,7 +10,7 @@ open System.Collections.Generic
 open LockChecker.Graph
 
 [<DataContract>]
-type NewMethodMessage =
+type AddMethodMessage =
     {
         [<field: DataMember(Name="method")>]
         method: Method
@@ -18,32 +18,22 @@ type NewMethodMessage =
         [<field: DataMember(Name="edges")>]
         edges: RawEdge []
     }
-    static member JsonReader = DataContractJsonSerializer(typeof<NewMethodMessage>)
+    static member JsonReader = DataContractJsonSerializer(typeof<AddMethodMessage>)
     static member FromJson (source: Stream) =
-        NewMethodMessage.JsonReader.ReadObject(source) :?> NewMethodMessage
+        AddMethodMessage.JsonReader.ReadObject(source) :?> AddMethodMessage
         
 [<DataContract>]
-type MethodChangedMessage =
+type UpdateFileMessage =
     {
-        [<field: DataMember(Name="method")>]
-        method: Method
+        [<field: DataMember(Name="fileName")>]
+        fileName: string
         
-        [<field: DataMember(Name="edges")>]
-        edges: RawEdge []
+        [<field: DataMember(Name="methods")>]
+        methods: string []
     }
-    static member JsonReader = DataContractJsonSerializer(typeof<MethodChangedMessage>)
+    static member JsonReader = DataContractJsonSerializer(typeof<UpdateFileMessage>)
     static member FromJson (source: Stream) =
-        MethodChangedMessage.JsonReader.ReadObject(source) :?> MethodChangedMessage
-        
-[<DataContract>]
-type MethodRemovedMessage =
-    {
-        [<field: DataMember(Name="name")>]
-        name: string
-    }
-    static member JsonReader = DataContractJsonSerializer(typeof<MethodRemovedMessage>)
-    static member FromJson (source: Stream) =
-        MethodRemovedMessage.JsonReader.ReadObject(source) :?> MethodRemovedMessage
+        UpdateFileMessage.JsonReader.ReadObject(source) :?> UpdateFileMessage
 
 [<DataContract>]
 type AddEdgePackMessage =
@@ -89,9 +79,34 @@ type ServiceHost(graphProvider: unit -> IControlFlowGraph, port) =
     let socket = TcpListener.Create (port)
     let mutable client = null
     let mutable isProcess = true
-    let mutable graph: IControlFlowGraph = graphProvider()
     
-    let performParsing (writer : StreamWriter) =
+    let mutable graph: IControlFlowGraph = graphProvider()
+    let addedMethodsBuffer = Dictionary<string, AddMethodMessage>()
+    
+    let updateFile (message: UpdateFileMessage) =
+        let oldSet = graph.GetFileInfo message.fileName
+        let newSet = set message.methods
+        
+        let removed = Set.difference oldSet newSet
+        let updated = Set.intersect oldSet newSet
+        let added = Set.difference newSet oldSet
+        
+        for method in removed do
+            graph.RemoveMethod method
+            
+        for method in updated do
+            let message = addedMethodsBuffer.[method]
+            addedMethodsBuffer.Remove method |> ignore
+            graph.AlterMethod message.method message.edges
+        
+        for method in added do
+            let message = addedMethodsBuffer.[method]
+            addedMethodsBuffer.Remove method |> ignore
+            graph.AddMethod message.method message.edges
+        
+        graph.UpdateFileInfo message.fileName newSet
+        
+    let performParsing (writer: StreamWriter) =
         let statistics = graph.GetStatistics()
         let parserSource = Parsing.generateParser statistics.calls statistics.locks statistics.asserts
         graph.SetTokenizer parserSource.StringToToken
@@ -139,20 +154,16 @@ type ServiceHost(graphProvider: unit -> IControlFlowGraph, port) =
                 use dataStream = new MemoryStream(System.Text.Encoding.ASCII.GetBytes(data))
                 match messageType with
                 | "add_method" -> 
-                    let message = NewMethodMessage.FromJson dataStream
-                    graph.AddMethod message.method message.edges
+                    let message = AddMethodMessage.FromJson dataStream
+                    addedMethodsBuffer.[message.method.name] <- message
                     success <- true
-                | "alter_method" -> 
-                    let message = MethodChangedMessage.FromJson dataStream
-                    graph.AlterMethod message.method message.edges
+                | "update_file" ->
+                    let message = UpdateFileMessage.FromJson dataStream
+                    updateFile message
                     success <- true
                 | "add_edge_pack" -> 
                     let message = AddEdgePackMessage.FromJson dataStream
                     graph.AddEdges message.edges
-                    success <- true
-                | "remove_method" -> 
-                    let message = MethodRemovedMessage.FromJson dataStream
-                    graph.RemoveMethod message.name
                     success <- true
                 | "update_decoder" -> 
                     let message = UpdateDecoderMessage.FromJson dataStream
