@@ -18,6 +18,14 @@ type QuickEdge(rawEdge: RawEdge) =
     
     member this.Token = token
     member this.SetToken newToken = token <- newToken
+    
+    override this.Equals obj =
+        let edge = obj :?> QuickEdge
+        
+        edge.Source = this.Source && edge.Target = this.Target && edge.Tag = this.Tag
+        
+    override this.GetHashCode() =
+        this.Source.GetHashCode() * this.Tag.GetHashCode() * this.Target.GetHashCode()
 
 [<CustomEquality; NoComparison>]
 type QuickMethod =
@@ -127,16 +135,17 @@ type QuickControlflowGraph() =
         referencedNodes.Add method.startNode |> ignore
         referencedNodes.UnionWith method.finalNodes |> ignore
         
-        edges |> Array.map 
+        edges |> Array.iter
             (
                 fun rawEdge ->
                     referencedNodes.Add rawEdge.startNode |> ignore
                     referencedNodes.Add rawEdge.endNode |> ignore
                     let edge = QuickEdge rawEdge
                     addEdgeToStatistics edge
-                    edge
+                    
+                    if not (this.ContainsEdge edge) then
+                        this.AddVerticesAndEdge edge |> ignore
             ) 
-            |> this.AddVerticesAndEdgeRange |> ignore
         
         referencedNodes
     
@@ -198,13 +207,14 @@ type QuickControlflowGraph() =
                         methods.Add (method.info.name, method)
         
         member this.AddEdges (edges: RawEdge []) =
-            edges |> Array.map 
+            edges |> Array.iter
                 (
                     fun rawEdge ->
                         let edge = QuickEdge rawEdge
                         addEdgeToStatistics edge
-                        edge
-                ) |> this.AddEdgeRange |> ignore
+                        if not (this.ContainsEdge edge) then
+                            this.AddEdge edge |> ignore
+                )
         
         member this.AddMethod method edges =
             let referencedNodes = this.AddMethodBody method edges
