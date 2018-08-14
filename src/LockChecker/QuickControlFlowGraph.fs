@@ -39,18 +39,24 @@ type QuickParserInput(starts, dynamicEdgesIndex: QuickEdge [] []) =
     interface IParserInput with
         member this.InitialPositions = 
             starts |> Seq.map(fun x -> x * 1<positionInInput>) |> Seq.toArray
-        
+
         member this.FinalPositions = 
             [||]
 
         [<MethodImpl(MethodImplOptions.AggressiveInlining)>]
         member this.ForAllOutgoingEdges curPosInInput pFun =
-            let edges = dynamicEdgesIndex.[int curPosInInput]
-            edges |> Seq.iter
-                (
-                    fun e -> 
-                        pFun e.Token (e.Target * 1<positionInInput>)
-                )
+            let rec forAllOutgoingEdgesAndEpsilons start =
+                let edges = dynamicEdgesIndex.[start]
+                edges |> Seq.iter
+                    (
+                        fun e -> 
+                            if e.Token = -1<token> then
+                                forAllOutgoingEdgesAndEpsilons e.Target
+                            else
+                                pFun e.Token (e.Target * 1<positionInInput>)
+                    )
+            
+            forAllOutgoingEdgesAndEpsilons (int curPosInInput)
 
         member this.PositionToString (pos : int<positionInInput>) =
             sprintf "%i" pos
@@ -116,8 +122,10 @@ type QuickControlflowGraph() =
             if removeStart || (node <> method.info.startNode) then 
                 this.TryToRemoveNode node
     
-    member private this.AddMethodBody method edges =
+    member private this.AddMethodBody (method: Method) edges =
         let referencedNodes = SortedSet<int>()
+        referencedNodes.Add method.startNode |> ignore
+        referencedNodes.UnionWith method.finalNodes |> ignore
         
         edges |> Array.map 
             (
@@ -262,7 +270,8 @@ type QuickControlflowGraph() =
                         let key = pair.Key
                         let success, edges = this.TryGetOutEdges key
                         for edge in edges do
-                            edge.SetToken (myTokenizer edge.Tag)
+                            if edge.Tag <> "e" then
+                                edge.SetToken (myTokenizer edge.Tag)
                         dynamicEdgesIndex.[key] <- (Seq.toArray edges)
                 )
             
@@ -273,10 +282,22 @@ type QuickControlflowGraph() =
             myTokenizer <- tokenizer
             
         member this.SetStarts starts =
-            //myStarts <- starts
+            myStarts <- starts
+        
+        member this.SetStartFile file =
+            let starts = files.[file] |> Seq.map (fun method -> method.info.startNode)
+            myStarts <- [|Array.ofSeq starts|]
+            
+        member this.DumpTriples writer =
+            for edge in this.Edges do
+                writer.WriteLine (edge.Source.ToString() + " " + edge.Tag + " " + edge.Target.ToString())
+            
+            let statistics = (this :> IControlFlowGraph).GetStatistics()
+            
+            writer.WriteLine (sprintf "%i %i %i %i" statistics.nodes statistics.calls statistics.locks statistics.asserts)
             
             let starts = files |> Seq.collect (fun pair -> pair.Value |> Seq.map (fun method -> method.info.startNode))
-            myStarts <- [|Array.ofSeq starts|]
+            writer.WriteLine (String.Join (" ", (starts |> Seq.map (fun i -> i.ToString()))))
             
         member this.GetParserInputs count =
             let count = min count myStarts.Length

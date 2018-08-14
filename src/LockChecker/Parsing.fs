@@ -5,10 +5,53 @@ open Yard.Generators.GLL.ParserCommon
 open Yard.Generators.Common.AutomataCombinators
 open Yard.Generators.Common.FSA.Common
 open AbstractAnalysis.Common
+open QuickGraph
 
 open AbstractParser
 
+type TokenLabeledInputGraph(initialVertices : int[], finalVertices : int[]) =
+    inherit AdjacencyGraph<int, ParserEdge<int<token>>>()
+
+    interface IParserInput with
+        member this.InitialPositions = 
+            Array.map(fun x -> x * 1<positionInInput>) initialVertices
+        
+        member this.FinalPositions = 
+            Array.map(fun x -> x * 1<positionInInput>) finalVertices
+
+        member this.ForAllOutgoingEdges curPosInInput pFun =
+            let rec forAllOutgoingEdgesAndEpsilons start =
+                let edges = start |> this.OutEdges
+                edges |> Seq.iter
+                    (
+                        fun e -> 
+                            if e.Tag = -1<token> then
+                                forAllOutgoingEdgesAndEpsilons e.Target
+                            else
+                                pFun e.Tag (e.Target * 1<positionInInput>)
+                    )
+            
+            forAllOutgoingEdgesAndEpsilons (int curPosInInput)
+
+        member this.PositionToString (pos : int<positionInInput>) =
+            sprintf "%i" pos
+
+type TokenLabeledInputSubGraph(basicGraph: TokenLabeledInputGraph, initialPostitions: int<positionInInput>[]) =
+    interface IParserInput with
+        member this.InitialPositions = 
+            initialPostitions
+        
+        member this.FinalPositions = 
+            (basicGraph :> IParserInput).FinalPositions
+
+        member this.ForAllOutgoingEdges curPosInInput pFun = 
+            (basicGraph :> IParserInput).ForAllOutgoingEdges curPosInInput pFun
+
+        member this.PositionToString (pos : int<positionInInput>) =
+            sprintf "%i" pos
+
 module Parsing =
+    open System.Threading
     open FSharpx.Collections
     open System.Threading.Tasks
     open QuickGraph
@@ -125,7 +168,10 @@ module Parsing =
 
         parser
     
-    let parseAbstractInputsParallel parserSource (inputs: IParserInput []) =
+    let parseAbstractInputsAsync parserSource (inputs: IParserInput []) =
+        let tokenSource = new CancellationTokenSource()
+        let token = tokenSource.Token
+        
         let tasks = 
             inputs
             |> Array.map
@@ -134,21 +180,14 @@ module Parsing =
                         let task = 
                             Task.Factory.StartNew (
                                 fun () -> 
-                                    getAllSPPFRootsAsINodes parserSource input
+                                    getAllSPPFRootsAsINodesInterruptable parserSource input (fun () -> token.IsCancellationRequested)
                             )
                         task
                 )
+                
+        let finalTask = Task.Factory.ContinueWhenAll(tasks, Array.collect (fun (task: Task<_>) -> task.Result), token)
         
-        let results = 
-            tasks 
-            |> Array.collect 
-                (
-                    fun task ->
-                        task.Wait()
-                        task.Result
-                )
-        
-        results
+        finalTask, tokenSource
         
     let parseGraph parserSource (inputGraph: TokenLabeledInputGraph) (components: int [] []) =
         let parallelTasks = min 2 components.Length
