@@ -39,18 +39,24 @@ type QuickParserInput(starts, dynamicEdgesIndex: QuickEdge [] []) =
     interface IParserInput with
         member this.InitialPositions = 
             starts |> Seq.map(fun x -> x * 1<positionInInput>) |> Seq.toArray
-        
+
         member this.FinalPositions = 
             [||]
 
         [<MethodImpl(MethodImplOptions.AggressiveInlining)>]
         member this.ForAllOutgoingEdges curPosInInput pFun =
-            let edges = dynamicEdgesIndex.[int curPosInInput]
-            edges |> Seq.iter
-                (
-                    fun e -> 
-                        pFun e.Token (e.Target * 1<positionInInput>)
-                )
+            let rec forAllOutgoingEdgesAndEpsilons start =
+                let edges = dynamicEdgesIndex.[start]
+                edges |> Seq.iter
+                    (
+                        fun e -> 
+                            if e.Token = -1<token> then
+                                forAllOutgoingEdgesAndEpsilons e.Target
+                            else
+                                pFun e.Token (e.Target * 1<positionInInput>)
+                    )
+            
+            forAllOutgoingEdgesAndEpsilons (int curPosInInput)
 
         member this.PositionToString (pos : int<positionInInput>) =
             sprintf "%i" pos
@@ -264,7 +270,8 @@ type QuickControlflowGraph() =
                         let key = pair.Key
                         let success, edges = this.TryGetOutEdges key
                         for edge in edges do
-                            edge.SetToken (myTokenizer edge.Tag)
+                            if edge.Tag <> "e" then
+                                edge.SetToken (myTokenizer edge.Tag)
                         dynamicEdgesIndex.[key] <- (Seq.toArray edges)
                 )
             

@@ -10,12 +10,12 @@
     <Compile Include="AssemblyInfo.fs" />
     <Compile Include="Logging.fs" />
     <Compile Include="Parsing.fs" />
+    <Compile Include="InputLoading.fs" />
     <Compile Include="ControlFlowGraph.fs" />
     <Compile Include="QuickControlFlowGraph.fs" />
     <Compile Include="CustomGraph.fs" />
     <Compile Include="ResultProcessing.fs" />
     <Compile Include="ServiceHost.fs" />
-    <Compile Include="InputLoading.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

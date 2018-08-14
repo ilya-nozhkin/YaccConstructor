@@ -11,6 +11,7 @@ open Yard.Generators.Common.FSA.Common
 open System.IO
 open System.Linq.Expressions
 open System.Linq.Expressions
+open QuickGraph
 
 (*
 ba: ASSERT
@@ -85,32 +86,22 @@ let parseGraphFile (graphStream: TextReader) =
         try int str
         with e -> 0
 
-    let callsStarts = Dictionary<int, int>()
-    let returnTargets = Dictionary<int, int>()
-
     let edges = 
         edgesLines |> Array.map (fun s -> s.Split ' ' |> 
             fun a -> 
                 let label = a.[1]
-                
-                try
-                    if label.StartsWith "C" then 
-                        let id = int (label.Substring 1)
-                        callsStarts.Add (id, int a.[0])
-                        
-                    if label.StartsWith "RT" then 
-                        let id = int (label.Substring 2)
-                        returnTargets.[id] <- int a.[2]
-                with e -> printfn "%s" e.Message
+                let token =
+                    if label = "e" then
+                        -1<token>
+                    else
+                        stringToToken label
                     
-                new ParserEdge<_>(int a.[0], int a.[2], stringToToken a.[1]))
-
-    let holeEdges = callsStarts |> Seq.filter (fun pair -> returnTargets.ContainsKey pair.Key) |> Seq.map (fun pair -> new ParserEdge<_>(pair.Value, returnTargets.[pair.Key], stringToToken ("H")))
-    let finalEdges = Seq.concat [holeEdges; seq edges]
+                new ParserEdge<_>(int a.[0], int a.[2], token))
     
     Logging.log (sprintf "Graph loading time is %A" (System.DateTime.UtcNow - time))
     
-    parserSource, Seq.toArray finalEdges, components
+    parserSource, edges, components
+    
 
 let loadInput (graphStream: TextReader) =
     let parserSource, edges, components = parseGraphFile graphStream

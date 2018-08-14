@@ -5,8 +5,50 @@ open Yard.Generators.GLL.ParserCommon
 open Yard.Generators.Common.AutomataCombinators
 open Yard.Generators.Common.FSA.Common
 open AbstractAnalysis.Common
+open QuickGraph
 
 open AbstractParser
+
+type TokenLabeledInputGraph(initialVertices : int[], finalVertices : int[]) =
+    inherit AdjacencyGraph<int, ParserEdge<int<token>>>()
+
+    interface IParserInput with
+        member this.InitialPositions = 
+            Array.map(fun x -> x * 1<positionInInput>) initialVertices
+        
+        member this.FinalPositions = 
+            Array.map(fun x -> x * 1<positionInInput>) finalVertices
+
+        member this.ForAllOutgoingEdges curPosInInput pFun =
+            let rec forAllOutgoingEdgesAndEpsilons start =
+                let edges = start |> this.OutEdges
+                edges |> Seq.iter
+                    (
+                        fun e -> 
+                            if e.Tag = -1<token> then
+                                forAllOutgoingEdgesAndEpsilons e.Target
+                            else
+                                pFun e.Tag (e.Target * 1<positionInInput>)
+                    )
+            
+            forAllOutgoingEdgesAndEpsilons (int curPosInInput)
+
+        member this.PositionToString (pos : int<positionInInput>) =
+            sprintf "%i" pos
+
+type TokenLabeledInputSubGraph(basicGraph: TokenLabeledInputGraph, initialPostitions: int<positionInInput>[]) =
+    interface IParserInput with
+        member this.InitialPositions = 
+            initialPostitions
+        
+        member this.FinalPositions = 
+            (basicGraph :> IParserInput).FinalPositions
+
+        member this.ForAllOutgoingEdges curPosInInput pFun = 
+            (basicGraph :> IParserInput).ForAllOutgoingEdges curPosInInput pFun
+
+        member this.PositionToString (pos : int<positionInInput>) =
+            sprintf "%i" pos
 
 module Parsing =
     open System.Threading
