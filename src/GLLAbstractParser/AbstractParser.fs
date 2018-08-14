@@ -22,7 +22,7 @@ let unpackNode = function
     | TreeNode x -> x
     | _ -> failwith "Wrong type"
 
-let parse (parser : ParserSourceGLL) (input : IParserInput) (buildTree : bool) = 
+let interruptableParse (parser : ParserSourceGLL) (input : IParserInput) (buildTree : bool) isInterrupted = 
     let dummy = 
         if buildTree
         then TreeNode(-1<nodeMeasure>)
@@ -132,13 +132,13 @@ let parse (parser : ParserSourceGLL) (input : IParserInput) (buildTree : bool) =
                 addContext nextPosInInput nextPosInGrammar currentContext.GssVertex (summLengths currentContext.Data (Length(1us)))
             else
                 pushContext nextPosInInput nextPosInGrammar currentContext.GssVertex (summLengths currentContext.Data (Length(1us)))
-    let processed = ref 0
-    let mlnCount = ref 0
+                
     let startTime = ref System.DateTime.Now
 
-    while setR.Count <> 0 do
+    while (setR.Count <> 0) && (not (isInterrupted())) do
         let currentContext = setR.Pop()
 
+        (*
         incr processed
         if !processed = 10000000
         then
@@ -146,6 +146,7 @@ let parse (parser : ParserSourceGLL) (input : IParserInput) (buildTree : bool) =
             printfn "%A mlns of D procesed. %A D/sec" (!mlnCount * 10) (!processed / int (System.DateTime.Now - !startTime).TotalMilliseconds * 1000)
             processed := 0
             startTime :=  System.DateTime.Now
+            *)
 
         let possibleNontermMovesInGrammar = parser.OutNonterms.[int currentContext.PosInGrammar]
 
@@ -180,6 +181,9 @@ let parse (parser : ParserSourceGLL) (input : IParserInput) (buildTree : bool) =
             Some <| new Tree<_>(sppf.GetRoots gss input.InitialPositions.[0], input.PositionToString, parser.IntToString)
         else
             None
+            
+let parse (parser : ParserSourceGLL) (input : IParserInput) (buildTree : bool) = 
+    interruptableParse parser input buildTree (fun () -> false)
        
 let findVertices (gss:GSS) state : seq<GSSVertex> =    
     gss.Vertices
@@ -198,6 +202,10 @@ let getAllSPPFRoots (parser : ParserSourceGLL) (input : IParserInput) =
 
 let getAllSPPFRootsAsINodes (parser : ParserSourceGLL) (input : IParserInput) = 
     let gss, sppf, _ = parse parser input true
+    sppf.GetRootsForStart gss input.InitialPositions
+    
+let getAllSPPFRootsAsINodesInterruptable (parser : ParserSourceGLL) (input : IParserInput) isInterrupted = 
+    let gss, sppf, _ = interruptableParse parser input true isInterrupted
     sppf.GetRootsForStart gss input.InitialPositions
 
 let isParsed (parser : ParserSourceGLL) (input : LinearInput) = 

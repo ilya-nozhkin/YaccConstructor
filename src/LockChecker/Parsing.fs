@@ -9,6 +9,7 @@ open AbstractAnalysis.Common
 open AbstractParser
 
 module Parsing =
+    open System.Threading
     open FSharpx.Collections
     open System.Threading.Tasks
     open QuickGraph
@@ -125,7 +126,10 @@ module Parsing =
 
         parser
     
-    let parseAbstractInputsParallel parserSource (inputs: IParserInput []) =
+    let parseAbstractInputsAsync parserSource (inputs: IParserInput []) =
+        let tokenSource = new CancellationTokenSource()
+        let token = tokenSource.Token
+        
         let tasks = 
             inputs
             |> Array.map
@@ -134,21 +138,14 @@ module Parsing =
                         let task = 
                             Task.Factory.StartNew (
                                 fun () -> 
-                                    getAllSPPFRootsAsINodes parserSource input
+                                    getAllSPPFRootsAsINodesInterruptable parserSource input (fun () -> token.IsCancellationRequested)
                             )
                         task
                 )
+                
+        let finalTask = Task.Factory.ContinueWhenAll(tasks, Array.collect (fun (task: Task<_>) -> task.Result), token)
         
-        let results = 
-            tasks 
-            |> Array.collect 
-                (
-                    fun task ->
-                        task.Wait()
-                        task.Result
-                )
-        
-        results
+        finalTask, tokenSource
         
     let parseGraph parserSource (inputGraph: TokenLabeledInputGraph) (components: int [] []) =
         let parallelTasks = min 2 components.Length

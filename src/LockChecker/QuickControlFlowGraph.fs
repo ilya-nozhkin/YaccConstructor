@@ -116,8 +116,10 @@ type QuickControlflowGraph() =
             if removeStart || (node <> method.info.startNode) then 
                 this.TryToRemoveNode node
     
-    member private this.AddMethodBody method edges =
+    member private this.AddMethodBody (method: Method) edges =
         let referencedNodes = SortedSet<int>()
+        referencedNodes.Add method.startNode |> ignore
+        referencedNodes.UnionWith method.finalNodes |> ignore
         
         edges |> Array.map 
             (
@@ -273,10 +275,22 @@ type QuickControlflowGraph() =
             myTokenizer <- tokenizer
             
         member this.SetStarts starts =
-            //myStarts <- starts
+            myStarts <- starts
+        
+        member this.SetStartFile file =
+            let starts = files.[file] |> Seq.map (fun method -> method.info.startNode)
+            myStarts <- [|Array.ofSeq starts|]
+            
+        member this.DumpTriples writer =
+            for edge in this.Edges do
+                writer.WriteLine (edge.Source.ToString() + " " + edge.Tag + " " + edge.Target.ToString())
+            
+            let statistics = (this :> IControlFlowGraph).GetStatistics()
+            
+            writer.WriteLine (sprintf "%i %i %i %i" statistics.nodes statistics.calls statistics.locks statistics.asserts)
             
             let starts = files |> Seq.collect (fun pair -> pair.Value |> Seq.map (fun method -> method.info.startNode))
-            myStarts <- [|Array.ofSeq starts|]
+            writer.WriteLine (String.Join (" ", (starts |> Seq.map (fun i -> i.ToString()))))
             
         member this.GetParserInputs count =
             let count = min count myStarts.Length

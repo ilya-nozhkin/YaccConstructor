@@ -6,6 +6,7 @@ open System.Net.Sockets
 open System.Runtime.Serialization.Json
 open System.Runtime.Serialization
 open System.Collections.Generic
+open System.Threading.Tasks
 
 open LockChecker.Graph
 
@@ -83,6 +84,10 @@ type ServiceHost(graphProvider: unit -> IControlFlowGraph, port) =
     let mutable graph: IControlFlowGraph = graphProvider()
     let addedMethodsBuffer = Dictionary<string, AddMethodMessage>()
     
+    let mutable asyncReadTask = null
+    
+    let mutable mostRecentlyUpdatedFile: string = null
+    
     let updateFile (message: UpdateFileMessage) =
         let oldSet = graph.GetFileInfo message.fileName
         let newSet = set message.methods
@@ -106,7 +111,7 @@ type ServiceHost(graphProvider: unit -> IControlFlowGraph, port) =
         
         graph.UpdateFileInfo message.fileName newSet
         
-    let performParsing (writer: StreamWriter) =
+    let performParsing (reader: StreamReader) (writer: StreamWriter) =
         let statistics = graph.GetStatistics()
         let parserSource = Parsing.generateParser statistics.calls statistics.locks statistics.asserts
         graph.SetTokenizer parserSource.StringToToken
@@ -116,7 +121,23 @@ type ServiceHost(graphProvider: unit -> IControlFlowGraph, port) =
         let parallelTasks = 2
         let inputs = graph.GetParserInputs parallelTasks
         
-        let roots = Parsing.parseAbstractInputsParallel parserSource inputs
+        let task, cancellation = Parsing.parseAbstractInputsAsync parserSource inputs
+        
+        let asyncMessage = reader.ReadLineAsync()
+        let asyncCanceller = 
+            asyncMessage.ContinueWith (
+                fun (completed: Task<_>) -> 
+                    if completed.Result = "interrupt" then cancellation.Cancel()
+            )
+            
+        asyncReadTask <- asyncCanceller
+        
+        if asyncCanceller.Status = TaskStatus.Created then
+            asyncCanceller.Start()
+        
+        task.Wait()
+        
+        let roots = task.Result
         
         let results = 
             let temporaryResults = new HashSet<_>()
@@ -126,6 +147,7 @@ type ServiceHost(graphProvider: unit -> IControlFlowGraph, port) =
             temporaryResults
         
         results |> Seq.iter (writer.WriteLine)
+        writer.Flush()
         
         graph.CleanUpAfterParsing()
     
@@ -138,6 +160,10 @@ type ServiceHost(graphProvider: unit -> IControlFlowGraph, port) =
         use writer = new StreamWriter(stream)
         
         while isProcess do
+            if asyncReadTask <> null then
+                asyncReadTask.Wait()
+                asyncReadTask <- null
+                
             let mutable messageType = reader.ReadLine()
             let mutable data = reader.ReadLine()
             let mutable success = false
@@ -160,6 +186,7 @@ type ServiceHost(graphProvider: unit -> IControlFlowGraph, port) =
                 | "update_file" ->
                     let message = UpdateFileMessage.FromJson dataStream
                     updateFile message
+                    mostRecentlyUpdatedFile <- message.fileName
                     success <- true
                 | "add_edge_pack" -> 
                     let message = AddEdgePackMessage.FromJson dataStream
@@ -171,8 +198,11 @@ type ServiceHost(graphProvider: unit -> IControlFlowGraph, port) =
                     success <- true
                 | "run_analysis" ->
                     let message = RunAnalysisMessage.FromJson dataStream
-                    graph.SetStarts message.starts
-                    performParsing writer
+                    graph.SetStartFile mostRecentlyUpdatedFile
+                    performParsing reader writer
+                    success <- true
+                | "dump_graph" ->
+                    graph.DumpTriples writer
                     success <- true
                 | "terminate" ->
                     use fileStream = new FileStream ("graph.dump", FileMode.Create)
@@ -184,7 +214,7 @@ type ServiceHost(graphProvider: unit -> IControlFlowGraph, port) =
                     graph <- graphProvider()
                     success <- true
                 | _ -> ()
-            with e -> printfn "%s" e.Message
+            with e -> printfn "%s\r\n%s" e.Message e.StackTrace
             
             if success then
                 writer.WriteLine("success")
