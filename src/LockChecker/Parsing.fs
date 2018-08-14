@@ -113,9 +113,9 @@ module Parsing =
         
         "ba" => asserts
         "ca" => asserts
-        "s0i" => ((%(%%"E") <|> &ca <|> &s0) <~> (&s0i <|> eps))
+        "s0i" => ((%(%%"I") <|> &ca <|> &s0) <~> (&s0i <|> eps))
         "s0" => (brackets2 locks getTokens s0i releaseTokens)
-        "s1" => ((%(%%"E") <|> &s0) <~> (&s1 <|> eps))
+        "s1" => ((%(%%"I") <|> &s0) <~> (&s1 <|> eps))
         "ss" => ((&ba <|> (brackets calls callTokens s returnTokens)))
         "s" !=> (((&s1 <~> &ss) <|> &ss) <~> (&s1 <|> eps))
     
