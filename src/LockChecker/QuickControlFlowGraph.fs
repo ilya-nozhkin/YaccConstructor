@@ -10,6 +10,7 @@ open System.IO
 open QuickGraph
 open System.Runtime.Serialization
 open System.Runtime.CompilerServices
+(*
 
 type QuickEdge(rawEdge: RawEdge) = 
     inherit TaggedEdge<int, string>(rawEdge.startNode, rawEdge.endNode, rawEdge.label)
@@ -324,3 +325,4 @@ type QuickControlflowGraph() =
                        QuickParserInput(starts, dynamicEdgesIndex)
                        :> IParserInput
             )
+*)

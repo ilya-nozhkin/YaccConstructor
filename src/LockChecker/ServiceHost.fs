@@ -22,7 +22,7 @@ type AddMethodMessage =
     static member JsonReader = DataContractJsonSerializer(typeof<AddMethodMessage>)
     static member FromJson (source: Stream) =
         AddMethodMessage.JsonReader.ReadObject(source) :?> AddMethodMessage
-        
+
 [<DataContract>]
 type UpdateFileMessage =
     {
@@ -45,6 +45,13 @@ type AddEdgePackMessage =
     static member JsonReader = DataContractJsonSerializer(typeof<AddEdgePackMessage>)
     static member FromJson (source: Stream) =
         AddEdgePackMessage.JsonReader.ReadObject(source) :?> AddEdgePackMessage
+
+[<DataContract>]
+type UpdateDelegateParameterMessage = 
+    struct end
+    static member JsonReader = DataContractJsonSerializer(typeof<DelegateParameterInfo>)
+    static member FromJson (source: Stream) =
+        UpdateDelegateParameterMessage.JsonReader.ReadObject(source) :?> DelegateParameterInfo
 
 [<DataContract>]
 type RunAnalysisMessage =
@@ -76,52 +83,25 @@ type UpdateDecoderMessage =
     static member FromJson (source: Stream) =
         UpdateDecoderMessage.JsonReader.ReadObject(source) :?> UpdateDecoderMessage
 
-type ServiceHost(graphProvider: unit -> IControlFlowGraph, port) =
+type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
     let socket = TcpListener.Create (port)
     let mutable client = null
     let mutable isProcess = true
     
-    let mutable graph: IControlFlowGraph = graphProvider()
-    let addedMethodsBuffer = Dictionary<string, AddMethodMessage>()
+    let mutable graph: ControlFlowGraph = graphProvider()
     
     let mutable asyncReadTask = null
     
     let mutable mostRecentlyUpdatedFile: string = null
-    
-    let updateFile (message: UpdateFileMessage) =
-        let oldSet = graph.GetFileInfo message.fileName
-        let newSet = set message.methods
         
-        let removed = Set.difference oldSet newSet
-        let updated = Set.intersect oldSet newSet
-        let added = Set.difference newSet oldSet
-        
-        for method in removed do
-            graph.RemoveMethod method
-            
-        for method in updated do
-            let message = addedMethodsBuffer.[method]
-            addedMethodsBuffer.Remove method |> ignore
-            graph.AlterMethod message.method message.edges
-        
-        for method in added do
-            let message = addedMethodsBuffer.[method]
-            addedMethodsBuffer.Remove method |> ignore
-            graph.AddMethod message.method message.edges
-        
-        graph.UpdateFileInfo message.fileName newSet
-        
-    let performParsing (reader: StreamReader) (writer: StreamWriter) =
+    let performParsing (reader: StreamReader) (writer: StreamWriter) (startFile: string) =
         let statistics = graph.GetStatistics()
         let parserSource = Parsing.generateParser statistics.calls statistics.locks statistics.asserts
-        graph.SetTokenizer parserSource.StringToToken
-        
-        graph.PrepareForParsing()
         
         let parallelTasks = 2
-        let inputs = graph.GetParserInputs parallelTasks
+        let inputs = graph.GetParserInput startFile parserSource.StringToToken
         
-        let task, cancellation = Parsing.parseAbstractInputsAsync parserSource inputs
+        let task, cancellation = Parsing.parseAbstractInputsAsync parserSource [|inputs|]
         
         let asyncMessage = reader.ReadLineAsync()
         let asyncCanceller = 
@@ -148,8 +128,6 @@ type ServiceHost(graphProvider: unit -> IControlFlowGraph, port) =
         
         results |> Seq.iter (writer.WriteLine)
         writer.Flush()
-        
-        graph.CleanUpAfterParsing()
     
     member this.Start() =
         socket.Start()
@@ -181,32 +159,40 @@ type ServiceHost(graphProvider: unit -> IControlFlowGraph, port) =
                 match messageType with
                 | "add_method" -> 
                     let message = AddMethodMessage.FromJson dataStream
-                    addedMethodsBuffer.[message.method.name] <- message
+                    graph.EnqueueMethodForProcessing (message.method) (message.edges)
                     success <- true
                 | "update_file" ->
                     let message = UpdateFileMessage.FromJson dataStream
-                    updateFile message
+                    graph.UpdateFileInfo (message.fileName) (set message.methods)
                     mostRecentlyUpdatedFile <- message.fileName
                     success <- true
                 | "add_edge_pack" -> 
                     let message = AddEdgePackMessage.FromJson dataStream
-                    graph.AddEdges message.edges
+                    graph.AddEdgePack message.edges
                     success <- true
                 | "update_decoder" -> 
                     let message = UpdateDecoderMessage.FromJson dataStream
                     message.records |> Array.iter (fun record -> ResultProcessing.decoder.[record.code] <- record.data)
                     success <- true
+                | "update_delegate_parameter" ->
+                    let message = UpdateDelegateParameterMessage.FromJson dataStream
+                    graph.UpdateDelegateParameter message
+                    success <- true
                 | "run_analysis" ->
                     let message = RunAnalysisMessage.FromJson dataStream
-                    graph.SetStartFile mostRecentlyUpdatedFile
-                    performParsing reader writer
+                    if mostRecentlyUpdatedFile = null then
+                        asyncReadTask <- reader.ReadLineAsync();
+                    else
+                        performParsing reader writer mostRecentlyUpdatedFile
                     success <- true
                 | "dump_graph" ->
-                    graph.DumpTriples writer
+                    graph.DumpStatesLevel writer
                     success <- true
                 | "terminate" ->
+                    (*
                     use fileStream = new FileStream ("graph.dump", FileMode.Create)
                     graph.Serialize fileStream
+                    *)
                     
                     isProcess <- false
                     success <- true

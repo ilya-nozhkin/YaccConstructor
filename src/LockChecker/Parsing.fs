@@ -180,7 +180,12 @@ module Parsing =
                         let task = 
                             Task.Factory.StartNew (
                                 fun () -> 
-                                    getAllSPPFRootsAsINodesInterruptable parserSource input (fun () -> token.IsCancellationRequested)
+                                    try
+                                        getAllSPPFRootsAsINodesInterruptable parserSource input (fun () -> token.IsCancellationRequested)
+                                    with e ->
+                                        printfn "%s" e.Message
+                                        printfn "%s" e.StackTrace
+                                        raise e
                             )
                         task
                 )
