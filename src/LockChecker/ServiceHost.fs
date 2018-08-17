@@ -14,10 +14,13 @@ open LockChecker.Graph
 type AddMethodMessage =
     {
         [<field: DataMember(Name="method")>]
-        method: Method
+        method: Method 
         
         [<field: DataMember(Name="edges")>]
         edges: RawEdge []
+        
+        [<field: DataMember(Name="callInfos")>]
+        callInfos: CallInfo []
     }
     static member JsonReader = DataContractJsonSerializer(typeof<AddMethodMessage>)
     static member FromJson (source: Stream) =
@@ -37,64 +40,56 @@ type UpdateFileMessage =
         UpdateFileMessage.JsonReader.ReadObject(source) :?> UpdateFileMessage
 
 [<DataContract>]
-type AddEdgePackMessage =
+type RestoreMessage =
     {
-        [<field: DataMember(Name="edges")>]
-        edges: RawEdge []
+        [<field: DataMember(Name="sourcePath")>]
+        sourcePath: string
     }
-    static member JsonReader = DataContractJsonSerializer(typeof<AddEdgePackMessage>)
+    static member JsonReader = DataContractJsonSerializer(typeof<RestoreMessage>)
     static member FromJson (source: Stream) =
-        AddEdgePackMessage.JsonReader.ReadObject(source) :?> AddEdgePackMessage
-
-[<DataContract>]
-type UpdateDelegateParameterMessage = 
-    struct end
-    static member JsonReader = DataContractJsonSerializer(typeof<DelegateParameterInfo>)
-    static member FromJson (source: Stream) =
-        UpdateDelegateParameterMessage.JsonReader.ReadObject(source) :?> DelegateParameterInfo
+        RestoreMessage.JsonReader.ReadObject(source) :?> RestoreMessage
 
 [<DataContract>]
 type RunAnalysisMessage =
     {
         [<field: DataMember(Name="starts")>]
-        starts: int [] []
+        starts: string []
     }
     static member JsonReader = DataContractJsonSerializer(typeof<RunAnalysisMessage>)
     static member FromJson (source: Stream) =
         RunAnalysisMessage.JsonReader.ReadObject(source) :?> RunAnalysisMessage
-        
-[<DataContract>]
-type DecoderRecord =
-    {
-        [<field: DataMember(Name="code")>]
-        code: string
-        
-        [<field: DataMember(Name="data")>]
-        data: string
-    }
 
 [<DataContract>]
-type UpdateDecoderMessage =
+type AddSpecificDecoderInfo =
     {
-        [<field: DataMember(Name="records")>]
-        records: DecoderRecord []
-    }
-    static member JsonReader = DataContractJsonSerializer(typeof<UpdateDecoderMessage>)
+        [<field: DataMember(Name="key")>]
+        key: string
+        
+        [<field: DataMember(Name="value")>]
+        value: string
+    }   
+    static member JsonReader = DataContractJsonSerializer(typeof<AddSpecificDecoderInfo>)
     static member FromJson (source: Stream) =
-        UpdateDecoderMessage.JsonReader.ReadObject(source) :?> UpdateDecoderMessage
+        AddSpecificDecoderInfo.JsonReader.ReadObject(source) :?> AddSpecificDecoderInfo
 
 type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
     let socket = TcpListener.Create (port)
     let mutable client = null
     let mutable isProcess = true
     
-    let mutable graph: ControlFlowGraph = graphProvider()
+    let mutable graph = graphProvider()
+    let mutable graphBuilder = new ControlFlowGraphBuilder(graph)
     
     let mutable asyncReadTask = null
     
     let mutable mostRecentlyUpdatedFile: string = null
         
     let performParsing (reader: StreamReader) (writer: StreamWriter) (startFile: string) =
+        graph.GenerateWeakEdges()
+        use statesWriter = new StreamWriter(@"C:\hackathon\states.graph")
+        graph.DumpStatesLevel statesWriter
+        graph.GetStorage.DumpToDot (@"C:\hackathon\graph.db")
+    
         let statistics = graph.GetStatistics()
         let parserSource = Parsing.generateParser statistics.calls statistics.locks statistics.asserts
         
@@ -126,16 +121,39 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
             |> Array.iter (fun s -> temporaryResults.UnionWith s)
             temporaryResults
         
-        results |> Seq.iter (writer.WriteLine)
+        let decoder = graph.GetDecoder()
+        for result in results do
+            printfn "%s" result
+            
+            let decoded = ResultProcessing.decode result decoder
+            printfn "%s" decoded
+            
+            writer.WriteLine decoded
+            writer.WriteLine ()
+            
         writer.Flush()
+        
+        graph.ClearWeakEdges()
     
     member this.Start() =
+        (*
+        let testMethod = {methodName = "test"; startNode = 0<local_state>; finalNode = 0<local_state>; inheritedFrom = ""}
+        let testEdges = [||]
+        let testCalls = [||]
+        
+        graphBuilder.UpdateMethod testMethod testEdges testCalls
+        
+        graphBuilder.UpdateFileInfo "testFile" (set ["test"])
+        *)
+    
         socket.Start()
         client <- socket.AcceptTcpClient()
         
         use stream = client.GetStream()
         use reader = new StreamReader(stream)
         use writer = new StreamWriter(stream)
+        
+        let mutable restoredFrom = ""
         
         while isProcess do
             if asyncReadTask <> null then
@@ -157,26 +175,25 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
             try
                 use dataStream = new MemoryStream(System.Text.Encoding.ASCII.GetBytes(data))
                 match messageType with
-                | "add_method" -> 
+                | "restore" ->
+                    let message = RestoreMessage.FromJson dataStream
+                    restoredFrom <- message.sourcePath
+                    if System.IO.File.Exists message.sourcePath then
+                        use reader = new StreamReader (message.sourcePath)
+                        graph.Deserialize reader
+                    success <- true
+                | "add_method" ->
                     let message = AddMethodMessage.FromJson dataStream
-                    graph.EnqueueMethodForProcessing (message.method) (message.edges)
+                    graphBuilder.UpdateMethod (message.method) (message.edges) (message.callInfos)
+                    success <- true
+                | "add_specific_decoder_info" ->
+                    let message = AddSpecificDecoderInfo.FromJson dataStream
+                    graphBuilder.AddDecoderInfo message.key message.value
                     success <- true
                 | "update_file" ->
                     let message = UpdateFileMessage.FromJson dataStream
-                    graph.UpdateFileInfo (message.fileName) (set message.methods)
+                    graphBuilder.UpdateFileInfo (message.fileName) (set message.methods)
                     mostRecentlyUpdatedFile <- message.fileName
-                    success <- true
-                | "add_edge_pack" -> 
-                    let message = AddEdgePackMessage.FromJson dataStream
-                    graph.AddEdgePack message.edges
-                    success <- true
-                | "update_decoder" -> 
-                    let message = UpdateDecoderMessage.FromJson dataStream
-                    message.records |> Array.iter (fun record -> ResultProcessing.decoder.[record.code] <- record.data)
-                    success <- true
-                | "update_delegate_parameter" ->
-                    let message = UpdateDelegateParameterMessage.FromJson dataStream
-                    graph.UpdateDelegateParameter message
                     success <- true
                 | "run_analysis" ->
                     let message = RunAnalysisMessage.FromJson dataStream
@@ -189,15 +206,15 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
                     graph.DumpStatesLevel writer
                     success <- true
                 | "terminate" ->
-                    (*
-                    use fileStream = new FileStream ("graph.dump", FileMode.Create)
-                    graph.Serialize fileStream
-                    *)
+                    if (restoredFrom <> "") then
+                        use fileStream = new StreamWriter ("graph.dump")
+                        graph.Serialize fileStream
                     
                     isProcess <- false
                     success <- true
                 | "reset" ->
                     graph <- graphProvider()
+                    graphBuilder <- new ControlFlowGraphBuilder(graph)
                     success <- true
                 | _ -> ()
             with e -> printfn "%s\r\n%s" e.Message e.StackTrace

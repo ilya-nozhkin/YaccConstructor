@@ -12,10 +12,9 @@
     <Compile Include="Parsing.fs" />
     <Compile Include="InputLoading.fs" />
     <Compile Include="ControlFlowGraph.fs" />
-    <Compile Include="QuickControlFlowGraph.fs" />
-    <Compile Include="CustomGraph.fs" />
     <Compile Include="ResultProcessing.fs" />
     <Compile Include="QuickGraphStorage.fs" />
+    <Compile Include="ControlFlowGraphBuilder.fs" />
     <Compile Include="ServiceHost.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>

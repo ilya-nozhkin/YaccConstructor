@@ -9,8 +9,6 @@ module ResultProcessing =
     open System.IO
     open Yard.Generators.Common.AstNode
 
-    let decoder = new Dictionary<string, string>()
-
     let extractNonCyclicPaths (root: INode) (intToString: Dictionary<int, string>) : HashSet<string> =
         let visited = new HashSet<INode>()
         let pathsCache = new Dictionary<INode, HashSet<string>>();
@@ -89,3 +87,10 @@ module ResultProcessing =
                         
         let extractionResults = extractNonCyclicPathsInternal root
         Option.defaultValue (HashSet<string>()) extractionResults
+    
+    let decode (path: string) (decoder: string -> string) =
+        path.Split ' '
+        |> Array.takeWhile (fun entity -> not (entity.StartsWith "RT"))
+        |> Array.map decoder
+        |> String.concat "\n"
+        

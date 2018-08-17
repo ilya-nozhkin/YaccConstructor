@@ -1,7 +1,28 @@
 namespace LockChecker.Graph
 
+open System.IO
 open System.Collections.Generic
 open QuickGraph
+
+module internal ReadHelper =
+    let tryReadLine (reader: StreamReader) = 
+        let peek = reader.Peek()
+        if peek = int '#' || peek = -1 then
+            (false, null)
+        else
+            (true, reader.ReadLine())
+    
+    let splitOnFirstOccurence (str: string) (sep: string) =
+        let index = str.IndexOf sep
+        (str.Substring (0, index), str.Substring (index + sep.Length))
+    
+    let fromString<'t> (value: string): 't =
+        if (typeof<'t> = typeof<int>) then
+            (System.Int32.Parse value) :> obj :?> 't
+        elif (typeof<'t> = typeof<string>) then
+            value :> obj :?> 't
+        else 
+            failwith "unknown value type"
 
 type QuickEdge(source: int, label: string, target: int) = 
     inherit TaggedEdge<int, string>(source, target, label)
@@ -14,6 +35,10 @@ type QuickEdge(source: int, label: string, target: int) =
     override this.GetHashCode() =
         this.Source.GetHashCode() * this.Tag.GetHashCode() * this.Target.GetHashCode()
 
+type IQuickSerializable =
+    abstract member Serialize: StreamWriter -> unit
+    abstract member Deserialize: StreamReader -> unit
+
 type QuickGraphIndex<'key when 'key : equality>() = 
     let dictionary = Dictionary<'key, int>()
     let reverseDictionary = Dictionary<int, 'key>()
@@ -23,6 +48,21 @@ type QuickGraphIndex<'key when 'key : equality>() =
         if exists then
             dictionary.Remove key |> ignore
             reverseDictionary.Remove id |> ignore
+            
+    interface IQuickSerializable with 
+        member this.Serialize writer =
+            for pair in (this :> IGraphIndex<'key>).Pairs() do
+                writer.WriteLine (sprintf "%s %s" ((snd pair).ToString()) ((fst pair).ToString()))
+        
+        member this.Deserialize (reader: StreamReader) = 
+            Seq.initInfinite (fun _ -> ReadHelper.tryReadLine reader)
+            |> Seq.takeWhile (fun (success, _) -> success)
+            |> Seq.iter 
+                (
+                    fun (_, data) -> 
+                        let value, key = ReadHelper.splitOnFirstOccurence data " "
+                        (this :> IGraphIndex<'key>).AddNode (ReadHelper.fromString<'key> key) (int value) |> ignore
+                )
     
     interface IGraphIndex<'key> with
         member this.AddNode (key: 'key) (id: int) =
@@ -42,24 +82,125 @@ type QuickGraphIndex<'key when 'key : equality>() =
         member this.Pairs() = 
             dictionary.Keys |> Seq.map (fun key -> (key, dictionary.[key]))
 
-type QuickGraphStorage() =
-    let graph = BidirectionalGraph<int, QuickEdge>()
+type QuickGraphDenseIndex<'key when 'key : equality>(indexer: 'key -> int, deindexer: int -> 'key) =
+    inherit DenseGraphIndex<'key>(indexer, deindexer)
     
-    let mutable nodesCounter = 0
+    let storage = ResizeArray<int>()
+    let reverseDictionary = SortedDictionary<int, 'key>()
+    
+    member this.RemoveFromIndex (nodeId: int) =
+        let exists, key = reverseDictionary.TryGetValue nodeId
+        if exists then
+            let index = indexer reverseDictionary.[nodeId]
+            this.FreeIndex index
+            
+            storage.[index] <- -1
+            reverseDictionary.Remove nodeId |> ignore
+    
+    override this.AddNode (key: 'key) (nodeId: int) =
+        let index = indexer key
+        while index >= storage.Count do
+            storage.Add -1
+            
+        if storage.[index] <> -1 then
+            false
+        else
+            storage.[index] <- nodeId
+            reverseDictionary.Add (nodeId, key)
+            true
+            
+    override this.FindNode (key: 'key) = 
+        let index = indexer key
+        if (index < 0 || index >= storage.Count || storage.[index] = -1) then
+            (false, -1)
+        else
+            (true, storage.[index])
+            
+    override this.FindKey (id: int) = 
+        reverseDictionary.TryGetValue id
+        
+    override this.Pairs() = 
+        [|0 .. storage.Count - 1|] |> Array.map (fun i -> (deindexer i, storage.[i])) |> seq
+        
+    interface IQuickSerializable with 
+        member this.Serialize writer =
+            writer.WriteLine (this.Provider.DumpStateToString())
+            for pair in (this :> IGraphIndex<'key>).Pairs() do
+                writer.WriteLine (sprintf "%s %s" ((snd pair).ToString()) ((fst pair).ToString()))
+                
+        member this.Deserialize (reader: StreamReader) = 
+            let providerInfo = reader.ReadLine()
+            this.Provider.RestoreStateFromString providerInfo
+            Seq.initInfinite (fun _ -> ReadHelper.tryReadLine reader)
+            |> Seq.takeWhile (fun (success, _) -> success)
+            |> Seq.iter 
+                (
+                    fun (_, data) -> 
+                        let value, key = ReadHelper.splitOnFirstOccurence data " "
+                        let value = int value
+                        
+                        (this :> IGraphIndex<'key>).AddNode (ReadHelper.fromString<'key> key) value |> ignore
+                )
+
+type QuickGraphStorage() =
+    inherit BidirectionalGraph<int, QuickEdge>()
+    
+    let assertTrue condition = assert condition
     
     let nodeLabels = SortedDictionary<int, string>()
     
     let indices = Dictionary<string, (obj * (int -> unit))>()
     
+    let weakEdges = HashSet<QuickEdge>()
+    
+    let mutable onEdgeRemovedListener = fun _ _ _ -> ()
+    
+    let denseNodesIndex = new DenseIdsProvider()
+    
+    member private this.DeserializeEdges (reader: StreamReader) =
+        Seq.initInfinite (fun _ -> ReadHelper.tryReadLine reader)
+        |> Seq.takeWhile (fun (success, _) -> success)
+        |> Seq.iter 
+            (
+                fun (_, data) -> 
+                    let splitted = data.Split ' '
+                    
+                    this.AddVertex (int splitted.[0]) |> ignore
+                    this.AddVertex (int splitted.[2]) |> ignore
+                    
+                    (this :> IGraphStorage).AddEdge (int splitted.[0]) splitted.[1] (int splitted.[2]) |> assertTrue
+            )
+            
+    member private this.DeserializeLabels (reader: StreamReader) =
+        Seq.initInfinite (fun _ -> ReadHelper.tryReadLine reader)
+        |> Seq.takeWhile (fun (success, _) -> success)
+        |> Seq.iter 
+            (
+                fun (_, data) -> 
+                    let key, value = ReadHelper.splitOnFirstOccurence data " "
+                    
+                    (this :> IGraphStorage).SetNodeLabel (int key) value |> assertTrue
+            )
+    
+    override this.OnEdgeRemoved edge =
+        onEdgeRemovedListener (edge.Source) (edge.Tag) (edge.Target)
+    
     interface IGraphStorage with
+        member this.SetOnEdgeRemovedListener (listener: int -> string -> int -> unit) =
+            this.add_EdgeRemoved (fun _ -> ())
+            onEdgeRemovedListener <- listener
+            
         member this.CreateNode() = 
-            let id = nodesCounter
-            let success = graph.AddVertex id 
-            nodesCounter <- nodesCounter + 1
+            let id = denseNodesIndex.GetFreeId()
+            let success = this.AddVertex id 
             id
             
         member this.RemoveNode (id: int) =
-            let status = graph.RemoveVertex id
+            let status = this.RemoveVertex id
+            denseNodesIndex.FreeId id
+            
+            if nodeLabels.ContainsKey id then
+                nodeLabels.Remove id |> assertTrue
             
             indices.Values |> Seq.iter (fun (_, remover) -> remover id )
             status
@@ -73,24 +214,38 @@ type QuickGraphStorage() =
                 
         member this.GetNodeLabel (id: int) =
             nodeLabels.TryGetValue id
+            
+        member this.AddWeakEdge source label target =
+            let edge = QuickEdge(source, label, target)
+            if not (this.ContainsEdge edge) then
+                weakEdges.Add edge |> ignore
+                this.AddEdge (edge)
+            else
+                true
+        
+        member this.ClearWeakEdges() =
+            for edge in weakEdges do
+                this.RemoveEdge edge |> (fun s -> assert s)
+            
+            weakEdges.Clear()
         
         member this.AddEdge source label target =
             let edge = QuickEdge(source, label, target)
-            if not (graph.ContainsEdge edge) then
-                graph.AddEdge (edge)
+            if not (this.ContainsEdge edge) then
+                this.AddEdge (edge)
             else
                 true
             
         member this.RemoveEdge source label target =
-            graph.RemoveEdge (QuickEdge(source, label, target))
+            this.RemoveEdge (QuickEdge(source, label, target))
     
         member this.OutgoingEdges (id: int) = 
-            graph.OutEdges id
+            this.OutEdges id
             |> Seq.map (fun edge -> (edge.Tag, edge.Target))
             |> Seq.toArray
             
         member this.IncomingEdges (id: int) = 
-            graph.InEdges id
+            this.InEdges id
             |> Seq.map (fun edge -> (edge.Tag, edge.Source))
             |> Seq.toArray
         
@@ -99,6 +254,58 @@ type QuickGraphStorage() =
             indices.Add (name, (index :> obj, index.RemoveFromIndex))
             true
             
+        member this.CreateDenseIndex<'key when 'key : equality> (name: string) (indexer: 'key -> int) (deindexer: int -> 'key) =
+            let index = new QuickGraphDenseIndex<'key>(indexer, deindexer)
+            indices.Add (name, (index :> obj, index.RemoveFromIndex))
+            true
+            
         member this.GetIndex<'key when 'key : equality> (name: string) =
             let exists, (object, _) = indices.TryGetValue name
             (exists, object :?> QuickGraphIndex<'key> :> IGraphIndex<'key>)
+            
+        member this.GetDenseIndex<'key when 'key : equality> (name: string) =
+            let exists, (object, _) = indices.TryGetValue name
+            (exists, object :?> QuickGraphDenseIndex<'key> :> DenseGraphIndex<'key>)
+        
+        member this.DumpToDot (path: string) =
+            use writer = new StreamWriter(path)
+            
+            writer.WriteLine "digraph G {"
+            
+            for edge in this.Edges do
+                writer.WriteLine (sprintf "%i -> %i [label=\"%s\"];" edge.Source edge.Target edge.Tag)
+            
+            writer.WriteLine "}"
+            
+        member this.Serialize (writer: StreamWriter) =
+            writer.WriteLine "#graph"
+            for edge in this.Edges do
+                writer.WriteLine (sprintf "%i %s %i" edge.Source edge.Tag edge.Target)
+            
+            writer.WriteLine "#labels"
+            for pair in nodeLabels do
+                writer.WriteLine (sprintf "%i %s" pair.Key pair.Value)
+            
+            for pair in indices do
+                let (index, _) = pair.Value
+                    
+                writer.WriteLine (sprintf "#index %s" pair.Key)
+                
+                (index :?> IQuickSerializable).Serialize writer
+        
+        member this.Deserialize (reader: StreamReader) =
+            while not reader.EndOfStream do
+                let typeLine = reader.ReadLine()
+                
+                assert (typeLine.[0] = '#')
+                
+                let blockType = (typeLine.Split ' ').[0]
+                
+                match blockType with
+                | "#graph" -> 
+                    this.DeserializeEdges reader
+                | "#labels" ->
+                    this.DeserializeLabels reader
+                | "#index" ->
+                    ((fst indices.[(typeLine.Split ' ').[1]]) :?> IQuickSerializable).Deserialize reader
+                    
