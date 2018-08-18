@@ -667,6 +667,10 @@ type ControlFlowGraph(storage: IGraphStorage) =
                 )
         writer.WriteLine (String.Join (" ", (starts |> Seq.map (fun i -> i.ToString()))))
     
+    member this.DumpDecoder (writer: StreamWriter) = 
+        for pair in decoderInfo do
+            writer.WriteLine (pair.Key + " " + pair.Value)
+    
     member private this.CollectAllPossibleInstances (visited: IDictionary<int, string list>) (delegateNode: int) : string list =
         if (visited.ContainsKey delegateNode) then
             visited.[delegateNode]

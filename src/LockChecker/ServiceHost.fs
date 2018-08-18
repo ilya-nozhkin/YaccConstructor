@@ -209,6 +209,9 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
                 | "dump_graph" ->
                     graph.DumpStatesLevel writer
                     success <- true
+                | "dump_decoder" ->
+                    graph.DumpDecoder writer
+                    success <- true
                 | "terminate" ->
                     if (restoredFrom <> "") then
                         use fileStream = new StreamWriter (restoredFrom)
