@@ -80,7 +80,8 @@ type ControlFlowGraphBuilder(graph: ControlFlowGraph) =
             let callLabel = "C" + callId.ToString()
             let returnLabel = "RT" + callId.ToString()
             
-            graph.SetDecoderInfo callLabel callInfo.decoderInfo
+            let modifiedDecoderInfo = callInfo.decoderInfo + " " + callInfo.target
+            graph.SetDecoderInfo callLabel modifiedDecoderInfo
             
             ([|{startNode = source; label = callLabel; endNode = targetStart}; 
                {startNode = targetFinal; label = returnLabel; endNode = target}|])

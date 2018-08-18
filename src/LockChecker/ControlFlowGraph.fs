@@ -700,7 +700,9 @@ type ControlFlowGraph(storage: IGraphStorage) =
             let parameter = snd parameter
             
             let instances = this.CollectAllPossibleInstances cache parameter
-            let instanceBounds = instances |> List.map this.GetOrCreateMethodBounds
+            let instanceBounds = 
+                instances 
+                |> List.map (fun name -> (this.GetOrCreateMethodBounds name, name))
             
             let substitutions = queryReferencedNodes parameter SUBSTITUTES_TO
             let substitutionBounds = 
@@ -719,19 +721,19 @@ type ControlFlowGraph(storage: IGraphStorage) =
                             let exists, label = storage.GetNodeLabel substitutionNode
                             assert exists
                             
-                            (start, final, label)
+                            ((start, final), label)
                     )
             
-            for instance in instanceBounds do
-                for substitution in substitutionBounds do
+            for (instance, instanceName) in instanceBounds do
+                for (substitution, substitutionLabel) in substitutionBounds do
                     let callId = this.GetFreeCallId()
                     
-                    let subsStart, subsFinal, label = substitution
+                    let decoderInfo = substitutionLabel + " " + instanceName
                     
-                    decoderInfo.[CALL callId] <- label
+                    this.SetDecoderInfo (CALL callId) decoderInfo
                     
-                    storage.AddWeakEdge (subsStart) (CALL callId) (fst instance) |> assertTrue
-                    storage.AddWeakEdge (snd instance) (RETURN callId) (subsFinal) |> assertTrue
+                    storage.AddWeakEdge (fst substitution) (CALL callId) (fst instance) |> assertTrue
+                    storage.AddWeakEdge (snd instance) (RETURN callId) (snd substitution) |> assertTrue
     
     member this.ClearWeakEdges() =
         storage.ClearWeakEdges()
