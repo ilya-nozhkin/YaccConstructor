@@ -196,6 +196,10 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
                     mostRecentlyUpdatedFile <- message.fileName
                     success <- true
                 | "run_analysis" ->
+                    if (restoredFrom <> "") then
+                        use fileStream = new StreamWriter (restoredFrom)
+                        graph.Serialize fileStream
+                    
                     let message = RunAnalysisMessage.FromJson dataStream
                     if mostRecentlyUpdatedFile = null then
                         asyncReadTask <- reader.ReadLineAsync();
@@ -207,7 +211,7 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
                     success <- true
                 | "terminate" ->
                     if (restoredFrom <> "") then
-                        use fileStream = new StreamWriter ("graph.dump")
+                        use fileStream = new StreamWriter (restoredFrom)
                         graph.Serialize fileStream
                     
                     isProcess <- false

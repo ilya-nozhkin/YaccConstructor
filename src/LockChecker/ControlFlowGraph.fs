@@ -113,6 +113,9 @@ type DenseIdsProvider() =
         else
             vacatedIds.Dequeue()
     
+    member this.GetMaxId() = 
+        counter - 1
+    
     member this.DumpStateToString() =
         use builder = new StringWriter()
         
@@ -160,6 +163,9 @@ type DenseGraphIndex<'key when 'key : equality>(indexer: 'key -> int, deindexer:
         let freeId = this.Provider.GetFreeId()
         
         deindexer freeId
+    
+    member this.GetMaxIndex() = 
+        deindexer (this.Provider.GetMaxId())
         
     interface IGraphIndex<'key> with
         member this.AddNode key node = this.AddNode key node
@@ -177,6 +183,8 @@ type IGraphStorage =
     abstract member RemoveEdge: int -> string -> int -> bool
     
     abstract member SetOnEdgeRemovedListener: (int -> string -> int -> unit) -> unit
+    abstract member SetOnEdgeAddedListener: (int -> string -> int -> unit) -> unit
+    abstract member SetOnNodeAddedListener: (int -> unit) -> unit
     
     abstract member AddWeakEdge: int -> string -> int -> bool
     abstract member ClearWeakEdges: unit -> unit
@@ -245,32 +253,27 @@ type ControlFlowGraph(storage: IGraphStorage) =
     
     let mutable denseStatesIndex: DenseGraphIndex<int<state>> = null
     
-    let mutable maxState = 0<state>
     let mutable maxCall = 0
     let mutable maxLock = 0
     let mutable maxAssert = 0
     
     let decoderInfo = Dictionary<string, string>()
     
-    let addEdgeToStatistics (edge: Edge) =
-        if edge.label.StartsWith "C" then 
-            let callId = int (edge.label.Substring 1)
+    let addEdgeToStatistics (label: string) =
+        if label.StartsWith "C" then 
+            let callId = int (label.Substring 1)
             if (callId > maxCall) then 
                 maxCall <- callId
                 
-        if edge.label.StartsWith "G" then 
-            let lockId = int (edge.label.Substring 1)
+        if label.StartsWith "G" then 
+            let lockId = int (label.Substring 1)
             if (lockId > maxLock) then 
                 maxLock <- lockId
                 
-        if edge.label.StartsWith "A" then 
-            let assertId = int (edge.label.Substring 1)
+        if label.StartsWith "A" then 
+            let assertId = int (label.Substring 1)
             if (assertId > maxAssert) then 
                 maxAssert <- assertId
-    
-    let addStateToStaticstics (state: int<state>) = 
-        if maxState < state then
-            maxState <- state
     
     let assertTrue condition = 
         assert condition
@@ -380,8 +383,6 @@ type ControlFlowGraph(storage: IGraphStorage) =
         if not exists then 
             assert (owner <> INVALID_NODE_ID)
             
-            addStateToStaticstics state
-            
             let nodeId = storage.CreateNode()
             denseStatesIndex.AddNode state nodeId |> assertTrue
             storage.AddEdge owner OWNS nodeId |> assertTrue
@@ -419,8 +420,6 @@ type ControlFlowGraph(storage: IGraphStorage) =
     
     let addEdges (edges: Edge []) (owner: int) =
         for edge in edges do
-            addEdgeToStatistics edge
-        
             let startNode = tryAddState owner (edge.startNode)
             let endNode = tryAddState owner (edge.endNode)
             
@@ -429,6 +428,9 @@ type ControlFlowGraph(storage: IGraphStorage) =
     let onEdgeRemovedListener source (label: string) target =
         if label.StartsWith "C" then
             denseCallIdsProvider.FreeId (int (label.Substring 1))
+            
+    let onEdgeAddedListener source (label: string) target =
+        addEdgeToStatistics label
     
     member this.GetFreeStateId() = 
         denseStatesIndex.GetFreeIndex()
@@ -457,6 +459,7 @@ type ControlFlowGraph(storage: IGraphStorage) =
         denseStatesIndex <- denseStatesIndex'
         
         storage.SetOnEdgeRemovedListener onEdgeRemovedListener
+        storage.SetOnEdgeAddedListener onEdgeAddedListener
 
     member this.InitStorage() =
         let success = storage.CreateIndex<string> "filesIndex"
@@ -639,15 +642,13 @@ type ControlFlowGraph(storage: IGraphStorage) =
         
     member this.GetStatistics() = 
         {
-            nodes = int maxState + 1
+            nodes = (int (denseStatesIndex.GetMaxIndex())) + 1
             calls = maxCall + 1
             locks = maxLock + 1
             asserts = maxAssert + 1
         }
     
     member this.DumpStatesLevel (writer: StreamWriter) = 
-        this.GenerateWeakEdges()
-    
         for pair in denseStatesIndex.Pairs() do
             for edge in storage.OutgoingEdges (snd pair) do
                 writer.WriteLine ((snd pair).ToString() + " " + (fst edge) + " " + (snd edge).ToString())
@@ -665,8 +666,6 @@ type ControlFlowGraph(storage: IGraphStorage) =
                         referencedNodes.[0]
                 )
         writer.WriteLine (String.Join (" ", (starts |> Seq.map (fun i -> i.ToString()))))
-        
-        this.ClearWeakEdges()
     
     member private this.CollectAllPossibleInstances (visited: IDictionary<int, string list>) (delegateNode: int) : string list =
         if (visited.ContainsKey delegateNode) then

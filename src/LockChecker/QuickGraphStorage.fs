@@ -120,7 +120,10 @@ type QuickGraphDenseIndex<'key when 'key : equality>(indexer: 'key -> int, deind
         reverseDictionary.TryGetValue id
         
     override this.Pairs() = 
-        [|0 .. storage.Count - 1|] |> Array.map (fun i -> (deindexer i, storage.[i])) |> seq
+        [|0 .. storage.Count - 1|] 
+        |> Array.map (fun i -> (deindexer i, storage.[i])) 
+        |> Array.filter (fun (key, node) -> node <> -1)
+        |> seq
         
     interface IQuickSerializable with 
         member this.Serialize writer =
@@ -182,13 +185,15 @@ type QuickGraphStorage() =
                     (this :> IGraphStorage).SetNodeLabel (int key) value |> assertTrue
             )
     
-    override this.OnEdgeRemoved edge =
-        onEdgeRemovedListener (edge.Source) (edge.Tag) (edge.Target)
-    
     interface IGraphStorage with
         member this.SetOnEdgeRemovedListener (listener: int -> string -> int -> unit) =
-            this.add_EdgeRemoved (fun _ -> ())
-            onEdgeRemovedListener <- listener
+            this.add_EdgeRemoved (fun edge -> listener (edge.Source) (edge.Tag) (edge.Target))
+            
+        member this.SetOnEdgeAddedListener (listener: int -> string -> int -> unit) =
+            this.add_EdgeAdded (fun edge -> listener (edge.Source) (edge.Tag) (edge.Target))
+            
+        member this.SetOnNodeAddedListener (listener: int -> unit) =
+            this.add_VertexAdded (fun vertex -> listener vertex)
             
         member this.CreateNode() = 
             let id = denseNodesIndex.GetFreeId()
@@ -278,20 +283,24 @@ type QuickGraphStorage() =
             writer.WriteLine "}"
             
         member this.Serialize (writer: StreamWriter) =
-            writer.WriteLine "#graph"
-            for edge in this.Edges do
-                writer.WriteLine (sprintf "%i %s %i" edge.Source edge.Tag edge.Target)
-            
-            writer.WriteLine "#labels"
-            for pair in nodeLabels do
-                writer.WriteLine (sprintf "%i %s" pair.Key pair.Value)
-            
             for pair in indices do
                 let (index, _) = pair.Value
                     
                 writer.WriteLine (sprintf "#index %s" pair.Key)
                 
                 (index :?> IQuickSerializable).Serialize writer
+                
+            writer.WriteLine "#graph"
+            for edge in this.Edges do
+                writer.WriteLine (sprintf "%i %s %i" edge.Source edge.Tag edge.Target)
+                
+            writer.WriteLine "#node_ids_provider"
+            writer.WriteLine (denseNodesIndex.DumpStateToString())
+            
+            writer.WriteLine "#labels"
+            for pair in nodeLabels do
+                writer.WriteLine (sprintf "%i %s" pair.Key pair.Value)
+            
         
         member this.Deserialize (reader: StreamReader) =
             while not reader.EndOfStream do
@@ -306,6 +315,9 @@ type QuickGraphStorage() =
                     this.DeserializeEdges reader
                 | "#labels" ->
                     this.DeserializeLabels reader
+                | "#node_ids_provider" ->
+                    let data = reader.ReadLine()
+                    denseNodesIndex.RestoreStateFromString data
                 | "#index" ->
                     ((fst indices.[(typeLine.Split ' ').[1]]) :?> IQuickSerializable).Deserialize reader
                     
