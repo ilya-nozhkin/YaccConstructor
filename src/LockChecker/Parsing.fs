@@ -110,6 +110,7 @@ module Parsing =
         let s1 = &&"s1"
         let ss = &&"ss"
         let s = &&"s"
+        let sm = &&"sm"
         
         "ba" => asserts
         "ca" => asserts
@@ -117,7 +118,8 @@ module Parsing =
         "s0" => (brackets2 locks getTokens s0i releaseTokens)
         "s1" => ((%(%%"I") <|> &s0) <~> (&s1 <|> eps))
         "ss" => ((&ba <|> (brackets calls callTokens s returnTokens)))
-        "s" !=> (((&s1 <~> &ss) <|> &ss) <~> (&s1 <|> eps))
+        "s" => (((&s1 <~> &ss) <|> &ss) <~> (&s1 <|> eps))
+        "sm" !=> ((&s1 <~> &ss) <|> &ss)
     
         (*
         "ba" => asserts
@@ -180,7 +182,12 @@ module Parsing =
                         let task = 
                             Task.Factory.StartNew (
                                 fun () -> 
-                                    getAllSPPFRootsAsINodesInterruptable parserSource input (fun () -> token.IsCancellationRequested)
+                                    try
+                                        getAllSPPFRootsAsINodesInterruptable parserSource input (fun () -> token.IsCancellationRequested)
+                                    with e ->
+                                        printfn "%s" e.Message
+                                        printfn "%s" e.StackTrace
+                                        raise e
                             )
                         task
                 )

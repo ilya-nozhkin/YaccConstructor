@@ -205,8 +205,11 @@ let getAllSPPFRootsAsINodes (parser : ParserSourceGLL) (input : IParserInput) =
     sppf.GetRootsForStart gss input.InitialPositions
     
 let getAllSPPFRootsAsINodesInterruptable (parser : ParserSourceGLL) (input : IParserInput) isInterrupted = 
-    let gss, sppf, _ = interruptableParse parser input true isInterrupted
-    sppf.GetRootsForStart gss input.InitialPositions
+    if input.InitialPositions.Length > 0 then
+        let gss, sppf, _ = interruptableParse parser input true isInterrupted
+        sppf.GetRootsForStart gss input.InitialPositions
+    else
+        Array.empty
 
 let isParsed (parser : ParserSourceGLL) (input : LinearInput) = 
     let gss, _, _ = parse parser input false
