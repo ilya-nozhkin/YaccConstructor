@@ -18,9 +18,9 @@ open System.IO
 open System.Collections.Generic
 
 let PrepareGrammarFromFile grammarFile = 
-        let fe = new YardFrontend()
-        let gen = new GLL()
-        generate grammarFile fe gen None Seq.empty [||] [] :?> ParserSourceGLL
+    let fe = new YardFrontend()
+    let gen = new GLL()
+    generate grammarFile fe gen None Seq.empty [||] [] :?> ParserSourceGLL
 
 let PrintToDotVert (graph: AdjacencyGraph<_,TaggedEdge<_,_>>) name (tagToString: _ -> string) (*(tokenToString : 'token -> string) (numToToken : int -> 'token)*) = 
     use out = new System.IO.StreamWriter (name : string)
@@ -212,9 +212,10 @@ let processFile inputFile grammarFile =
     let g1, edges = 
         getParseInputGraphVert inputFile ps
     printfn "\nNumber of edges: %i" edges
-
+    
+    let myParser = new GLLParser(ps, g1, true)
     let start = System.DateTime.Now
-    let _,sppf,_ = parse ps g1 true
+    let sppf = myParser.ParseAndGetSPPF()
     let subgraph = SPPFToSubgraph sppf ps
     let time1 = (System.DateTime.Now - start).TotalMilliseconds
 

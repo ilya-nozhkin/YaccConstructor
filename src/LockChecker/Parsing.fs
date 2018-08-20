@@ -183,7 +183,7 @@ module Parsing =
                             Task.Factory.StartNew (
                                 fun () -> 
                                     try
-                                        getAllSPPFRootsAsINodesInterruptable parserSource input (fun () -> token.IsCancellationRequested)
+                                        (new GLLParser(parserSource, input, true)).GetAllSPPFRootsAsINodesInterruptable (fun () -> token.IsCancellationRequested)
                                     with e ->
                                         printfn "%s" e.Message
                                         printfn "%s" e.StackTrace
@@ -213,7 +213,7 @@ module Parsing =
                                                 |> Array.concat
                                                 |> Array.map ((*) 1<positionInInput>)
                                             let subgraph = new TokenLabeledInputSubGraph (inputGraph, starts)
-                                            getAllSPPFRootsAsINodes parserSource subgraph
+                                            (new GLLParser(parserSource, subgraph, true)).GetAllSPPFRootsAsINodes()
                                     )
                                 task
                         )
