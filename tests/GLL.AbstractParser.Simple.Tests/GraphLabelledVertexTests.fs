@@ -54,9 +54,9 @@ let getParserSource grammarFile conv =
 
 let test grammarFile inputFile startPos nodesCount edgesCount termsCount ambiguityCount = 
     let conv = [new ExpandMeta()]
-    let parser = getParserSource grammarFile conv
-    let input  = getInputGraphVertLbl parser.StringToToken inputFile startPos
-    let tree = buildAst parser input
+    let parserSource = getParserSource grammarFile conv
+    let input  = getInputGraphVertLbl parserSource.StringToToken inputFile startPos
+    let tree = (new GLLParser(parserSource, input, true)).BuildAst()
 //    printfn "%A" tree
 //    tree.AstToDot (dataDir + inputFile + ".dot")
     let n, e, t, amb = tree.CountCounters

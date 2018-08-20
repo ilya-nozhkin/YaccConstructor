@@ -76,7 +76,7 @@ let processFile file =
     let start = System.DateTime.Now
     let root1 =
         [for i in 0..cnt-1 ->
-            Yard.Generators.GLL.AbstractParser.getAllRangesForStartState GLL.GPPerf1.parserSource g1
+            (new GLLParser(GLL.GPPerf1.parserSource, g1, true)).GetAllRangesForStartState()
             |> Set.ofSeq
             |> Seq.length]
     
@@ -85,7 +85,7 @@ let processFile file =
     let start = System.DateTime.Now
     let root2 =
         [for i in 0..cnt-1 ->
-            Yard.Generators.GLL.AbstractParser.getAllRangesForStartState GLL.GPPerf2.parserSource g2
+            (new GLLParser( GLL.GPPerf2.parserSource, g2, true)).GetAllRangesForStartState()
             |> Set.ofSeq
             |> Seq.length]
     let time2 = (System.DateTime.Now - start).TotalMilliseconds / (float cnt)
