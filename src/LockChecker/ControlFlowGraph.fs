@@ -749,11 +749,18 @@ type ControlFlowGraph(storage: IGraphStorage) =
                     
                     storage.AddWeakEdge (fst substitution) (CALL callId) (fst instance) |> assertTrue
                     storage.AddWeakEdge (snd instance) (RETURN callId) (snd substitution) |> assertTrue
+            
+        let clearWeakEdges = fun () -> this.ClearWeakEdges()
+        
+        {
+            new IDisposable with
+                member this.Dispose() = clearWeakEdges()
+        }
     
     member this.ClearWeakEdges() =
         storage.ClearWeakEdges()
 
-    member this.GetParserInput (startFile: string) (tokenizer: string -> int<token>) =
+    member this.GetParserInput (startFiles: string []) (tokenizer: string -> int<token>) =
         let statistics = this.GetStatistics()
         let dynamicIndex = Array.zeroCreate (statistics.nodes)
         
@@ -776,13 +783,20 @@ type ControlFlowGraph(storage: IGraphStorage) =
                                     (tokenizer label, newTarget)
                         )
         
-        let exists, fileNodeId = filesIndex.FindNode startFile
-        assert exists
+        let fileNodes = 
+            startFiles 
+            |> Array.map (filesIndex.FindNode >> 
+                             (fun (exists, nodeId) -> assert exists; nodeId))
         
         let starts =
-            queryReferencedNodes fileNodeId CONTAINS 
-            |> Array.collect (fun methodNodeId -> queryReferencedNodes methodNodeId STARTS_FROM)
-            |> Array.map (denseStatesIndex.FindKey >> (fun (exists, id) -> assert exists; int id))
+            fileNodes
+            |> Array.collect 
+                (
+                    fun fileNodeId ->
+                        queryReferencedNodes fileNodeId CONTAINS 
+                        |> Array.collect (fun methodNodeId -> queryReferencedNodes methodNodeId STARTS_FROM)
+                        |> Array.map (denseStatesIndex.FindKey >> (fun (exists, id) -> assert exists; int id))
+                )
         
         ControlFlowInput (starts, dynamicIndex)
         

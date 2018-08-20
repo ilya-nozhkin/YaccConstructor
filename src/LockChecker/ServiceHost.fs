@@ -8,6 +8,7 @@ open System.Runtime.Serialization
 open System.Collections.Generic
 open System.Threading.Tasks
 
+open System.Threading
 open LockChecker.Graph
 
 [<DataContract>]
@@ -81,28 +82,45 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
     let mutable graphBuilder = new ControlFlowGraphBuilder(graph)
     
     let mutable asyncReadTask = null
-    
-    let mutable mostRecentlyUpdatedFile: string = null
         
-    let performParsing (reader: StreamReader) (writer: StreamWriter) (startFile: string) =
-        graph.GenerateWeakEdges()
-        use statesWriter = new StreamWriter(@"C:\hackathon\states.graph")
-        graph.DumpStatesLevel statesWriter
-    
-        let statistics = graph.GetStatistics()
-        let parserSource = Parsing.generateParser statistics.calls statistics.locks statistics.asserts
-        
-        let parallelTasks = 2
-        let inputs = graph.GetParserInput startFile parserSource.StringToToken
-        
-        let task, cancellation = Parsing.parseAbstractInputsAsync parserSource [|inputs|]
+    let performParsing (reader: StreamReader) (writer: StreamWriter) (startFiles: string []) =
+        let mutable cancellation: CancellationTokenSource = null
+        let mutable cancelled = false
         
         let asyncMessage = reader.ReadLineAsync()
         let asyncCanceller = 
             asyncMessage.ContinueWith (
                 fun (completed: Task<_>) -> 
-                    if completed.Result = "interrupt" then cancellation.Cancel()
+                    if completed.Result = "interrupt" then 
+                        if cancellation <> null then
+                            cancellation.Cancel()
+                        cancelled <- true
             )
+            
+        if cancelled then
+            raise (new ThreadInterruptedException())
+            
+        use disposableEdges = graph.GenerateWeakEdges()
+        
+        if cancelled then
+            raise (new ThreadInterruptedException())
+        
+        use statesWriter = new StreamWriter(@"C:\hackathon\states.graph")
+        graph.DumpStatesLevel statesWriter
+        
+        if cancelled then
+            raise (new ThreadInterruptedException())
+    
+        let statistics = graph.GetStatistics()
+        let parserSource = Parsing.generateParser statistics.calls statistics.locks statistics.asserts
+        
+        if cancelled then
+            raise (new ThreadInterruptedException())
+        
+        let inputs = graph.GetParserInput startFiles parserSource.StringToToken
+        
+        let task, parserCancellation = Parsing.parseAbstractInputsAsync parserSource [|inputs|]
+        cancellation <- parserCancellation
             
         asyncReadTask <- asyncCanceller
         
@@ -113,12 +131,18 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         
         let roots = task.Result
         
+        if cancelled then
+            raise (new ThreadInterruptedException())
+        
         let results = 
             let temporaryResults = new HashSet<_>()
             roots
             |> Array.map (fun x -> ResultProcessing.extractNonCyclicPaths x parserSource.IntToString)
             |> Array.iter (fun s -> temporaryResults.UnionWith s)
             temporaryResults
+            
+        if cancelled then
+            raise (new ThreadInterruptedException())
         
         let decoder = graph.GetDecoder()
         for result in results do
@@ -131,8 +155,6 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
             writer.WriteLine ()
             
         writer.Flush()
-        
-        graph.ClearWeakEdges()
     
     member this.Start() =
         (*
@@ -192,7 +214,6 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
                 | "update_file" ->
                     let message = UpdateFileMessage.FromJson dataStream
                     graphBuilder.UpdateFileInfo (message.fileName) (set message.methods)
-                    mostRecentlyUpdatedFile <- message.fileName
                     success <- true
                 | "run_analysis" ->
                     if (restoredFrom <> "") then
@@ -201,10 +222,7 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
                         graph.GetStorage.DumpToDot (@"C:\hackathon\graph.db")
                     
                     let message = RunAnalysisMessage.FromJson dataStream
-                    if mostRecentlyUpdatedFile = null then
-                        asyncReadTask <- reader.ReadLineAsync();
-                    else
-                        performParsing reader writer mostRecentlyUpdatedFile
+                    performParsing reader writer message.starts
                     success <- true
                 | "dump_graph" ->
                     graph.DumpStatesLevel writer
