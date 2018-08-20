@@ -592,6 +592,7 @@ type ControlFlowGraph(storage: IGraphStorage) =
         addEdges edges INVALID_NODE_ID
     
     member this.GetOrCreateDelegateParameter (method: string) (parameterId: int) =
+        this.GetOrCreateMethodBounds method |> ignore
         let methodNodeId = getOrCreateMethodNode method
         
         let possibleParameterNodes = queryReferencedNodesWithLabels methodNodeId HAS_PARAMETER (parameterId.ToString())
@@ -612,6 +613,8 @@ type ControlFlowGraph(storage: IGraphStorage) =
         assert exists
         
         let instantiator = storage.CreateNode()
+        
+        this.GetOrCreateMethodBounds instance |> ignore
         
         storage.AddEdge callerId INITIATES_PASSING instantiator |> assertTrue
         storage.AddEdge instantiator INSTANTIATED_WITH (getOrCreateMethodNode instance) |> assertTrue

@@ -88,7 +88,6 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         graph.GenerateWeakEdges()
         use statesWriter = new StreamWriter(@"C:\hackathon\states.graph")
         graph.DumpStatesLevel statesWriter
-        graph.GetStorage.DumpToDot (@"C:\hackathon\graph.db")
     
         let statistics = graph.GetStatistics()
         let parserSource = Parsing.generateParser statistics.calls statistics.locks statistics.asserts
@@ -199,6 +198,7 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
                     if (restoredFrom <> "") then
                         use fileStream = new StreamWriter (restoredFrom)
                         graph.Serialize fileStream
+                        graph.GetStorage.DumpToDot (@"C:\hackathon\graph.db")
                     
                     let message = RunAnalysisMessage.FromJson dataStream
                     if mostRecentlyUpdatedFile = null then
