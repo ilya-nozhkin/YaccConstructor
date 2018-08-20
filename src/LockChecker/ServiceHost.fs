@@ -11,6 +11,12 @@ open System.Threading.Tasks
 open System.Threading
 open LockChecker.Graph
 
+open AbstractAnalysis.Common
+open FSharpx.Collections.Experimental.BootstrappedQueue
+open FSharpx.Collections.Experimental.BootstrappedQueue
+open FSharpx.Collections.Experimental.BootstrappedQueue
+open Yard.Generators.GLL.AbstractParser
+
 [<DataContract>]
 type AddMethodMessage =
     {
@@ -82,10 +88,44 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
     let mutable graphBuilder = new ControlFlowGraphBuilder(graph)
     
     let mutable asyncReadTask = null
+    
+    let mutable parserIsValid = false
+    
+    let mutable (parser: GLLParser option) = None
+    
+    let invalidateParser() =
+        parserIsValid <- false
+        parser <- None
+    
+    let prepareForParsing (checkForInterrupt: unit -> unit) =
+        checkForInterrupt()
+            
+        use disposableEdges = graph.GenerateWeakEdges()
+        
+        checkForInterrupt()
+        
+        use statesWriter = new StreamWriter(@"C:\hackathon\states.graph")
+        graph.DumpStatesLevel statesWriter
+        
+        checkForInterrupt()
+    
+        let statistics = graph.GetStatistics()
+        let parserSource = Parsing.generateParser statistics.calls statistics.locks statistics.asserts
+        
+        checkForInterrupt()
+            
+        let input = graph.GetParserInput parserSource.StringToToken
+        
+        checkForInterrupt()
+        
+        parser <- Some (new GLLParser(parserSource, input, true))
+        parserIsValid <- true
         
     let performParsing (reader: StreamReader) (writer: StreamWriter) (startFiles: string []) =
         let mutable cancellation: CancellationTokenSource = null
         let mutable cancelled = false
+        
+        let checkForInterrupt = (fun () -> if cancelled then raise (new ThreadInterruptedException()))
         
         let asyncMessage = reader.ReadLineAsync()
         let asyncCanceller = 
@@ -97,32 +137,17 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
                         cancelled <- true
             )
             
-        if cancelled then
-            raise (new ThreadInterruptedException())
-            
-        use disposableEdges = graph.GenerateWeakEdges()
-        
-        if cancelled then
-            raise (new ThreadInterruptedException())
-        
-        use statesWriter = new StreamWriter(@"C:\hackathon\states.graph")
-        graph.DumpStatesLevel statesWriter
-        
-        if cancelled then
-            raise (new ThreadInterruptedException())
-    
-        let statistics = graph.GetStatistics()
-        let parserSource = Parsing.generateParser statistics.calls statistics.locks statistics.asserts
-        
-        if cancelled then
-            raise (new ThreadInterruptedException())
-        
-        let inputs = graph.GetParserInput startFiles parserSource.StringToToken
-        
-        let task, parserCancellation = Parsing.parseAbstractInputsAsync parserSource [|inputs|]
-        cancellation <- parserCancellation
-            
         asyncReadTask <- asyncCanceller
+            
+        if not parserIsValid then
+            prepareForParsing checkForInterrupt
+        
+        checkForInterrupt()
+        
+        let starts = graph.GetStartsForFiles startFiles |> Array.map ((*) 1<positionInInput>)
+        
+        let task, parserCancellation = Parsing.parseAsync (Option.get parser) starts
+        cancellation <- parserCancellation
         
         if asyncCanceller.Status = TaskStatus.Created then
             asyncCanceller.Start()
@@ -131,18 +156,16 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         
         let roots = task.Result
         
-        if cancelled then
-            raise (new ThreadInterruptedException())
+        checkForInterrupt()
         
         let results = 
             let temporaryResults = new HashSet<_>()
             roots
-            |> Array.map (fun x -> ResultProcessing.extractNonCyclicPaths x parserSource.IntToString)
+            |> Array.map (fun x -> ResultProcessing.extractNonCyclicPaths x (parser.Value.Source.IntToString))
             |> Array.iter (fun s -> temporaryResults.UnionWith s)
             temporaryResults
-            
-        if cancelled then
-            raise (new ThreadInterruptedException())
+        
+        checkForInterrupt()
         
         let decoder = graph.GetDecoder()
         for result in results do
@@ -202,10 +225,14 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
                     if System.IO.File.Exists message.sourcePath then
                         use reader = new StreamReader (message.sourcePath)
                         graph.Deserialize reader
+                        
+                    invalidateParser()
                     success <- true
                 | "add_method" ->
                     let message = AddMethodMessage.FromJson dataStream
                     graphBuilder.UpdateMethod (message.method) (message.edges) (message.callInfos)
+                    
+                    invalidateParser()
                     success <- true
                 | "add_specific_decoder_info" ->
                     let message = AddSpecificDecoderInfo.FromJson dataStream
@@ -214,6 +241,8 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
                 | "update_file" ->
                     let message = UpdateFileMessage.FromJson dataStream
                     graphBuilder.UpdateFileInfo (message.fileName) (set message.methods)
+                    
+                    invalidateParser()
                     success <- true
                 | "run_analysis" ->
                     if (restoredFrom <> "") then
@@ -240,6 +269,8 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
                 | "reset" ->
                     graph <- graphProvider()
                     graphBuilder <- new ControlFlowGraphBuilder(graph)
+                    
+                    invalidateParser()
                     success <- true
                 | _ -> ()
             with e -> printfn "%s\r\n%s" e.Message e.StackTrace

@@ -170,31 +170,23 @@ module Parsing =
 
         parser
     
-    let parseAbstractInputsAsync parserSource (inputs: IParserInput []) =
+    let parseAsync (parser: GLLParser) (starts: int<positionInInput> []) =
         let tokenSource = new CancellationTokenSource()
         let token = tokenSource.Token
         
-        let tasks = 
-            inputs
-            |> Array.map
+        let task = 
+            Task.Factory.StartNew (
                 (
-                    fun input ->
-                        let task = 
-                            Task.Factory.StartNew (
-                                fun () -> 
-                                    try
-                                        (new GLLParser(parserSource, input, true)).GetAllSPPFRootsAsINodesInterruptable (fun () -> token.IsCancellationRequested)
-                                    with e ->
-                                        printfn "%s" e.Message
-                                        printfn "%s" e.StackTrace
-                                        raise e
-                            )
-                        task
-                )
+                    fun () -> 
+                        try
+                            parser.ParseMore starts (fun () -> token.IsCancellationRequested)
+                        with e ->
+                            printfn "%s" e.Message
+                            printfn "%s" e.StackTrace
+                            raise e
+                ), token) 
                 
-        let finalTask = Task.Factory.ContinueWhenAll(tasks, Array.collect (fun (task: Task<_>) -> task.Result), token)
-        
-        finalTask, tokenSource
+        task, tokenSource
         
     let parseGraph parserSource (inputGraph: TokenLabeledInputGraph) (components: int [] []) =
         let parallelTasks = min 2 components.Length

@@ -126,8 +126,7 @@ type GLLParser(parser : ParserSourceGLL, input : IParserInput, buildTree : bool)
     
     member this.InterruptableParseFromPositions (initialPositions : int<positionInInput> array) (isInterrupted : unit -> bool) =         
         let startContexts = 
-            input.InitialPositions
-            //|> Array.rev
+            initialPositions
             |> Array.map(fun pos -> 
                 let vertex = gssVertexInstanceHolder.Get(parser.StartState, pos)
                 gss.AddVertex vertex |> ignore
@@ -235,3 +234,6 @@ type GLLParser(parser : ParserSourceGLL, input : IParserInput, buildTree : bool)
     member this.ParseAndGetAllRangesForStartStateWithLength () = 
         this.Parse()
         this.GetAllRangesForStateWithLength gss parser.StartState
+        
+    member this.Source =
+        parser

@@ -760,7 +760,7 @@ type ControlFlowGraph(storage: IGraphStorage) =
     member this.ClearWeakEdges() =
         storage.ClearWeakEdges()
 
-    member this.GetParserInput (startFiles: string []) (tokenizer: string -> int<token>) =
+    member this.GetParserInput (tokenizer: string -> int<token>) =
         let statistics = this.GetStatistics()
         let dynamicIndex = Array.zeroCreate (statistics.nodes)
         
@@ -783,22 +783,22 @@ type ControlFlowGraph(storage: IGraphStorage) =
                                     (tokenizer label, newTarget)
                         )
         
+        ControlFlowInput (Array.empty, dynamicIndex)
+    
+    member this.GetStartsForFiles (files: string []) =
         let fileNodes = 
-            startFiles 
+            files
             |> Array.map (filesIndex.FindNode >> 
                              (fun (exists, nodeId) -> assert exists; nodeId))
         
-        let starts =
-            fileNodes
-            |> Array.collect 
-                (
-                    fun fileNodeId ->
-                        queryReferencedNodes fileNodeId CONTAINS 
-                        |> Array.collect (fun methodNodeId -> queryReferencedNodes methodNodeId STARTS_FROM)
-                        |> Array.map (denseStatesIndex.FindKey >> (fun (exists, id) -> assert exists; int id))
-                )
-        
-        ControlFlowInput (starts, dynamicIndex)
+        fileNodes
+        |> Array.collect 
+            (
+                fun fileNodeId ->
+                    queryReferencedNodes fileNodeId CONTAINS 
+                    |> Array.collect (fun methodNodeId -> queryReferencedNodes methodNodeId STARTS_FROM)
+                    |> Array.map (denseStatesIndex.FindKey >> (fun (exists, id) -> assert exists; int id))
+            )
         
     member this.GetDecoder() = 
         fun key -> decoderInfo.[key]
