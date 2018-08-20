@@ -47,12 +47,12 @@ let getLinearInputWithAllStartingPos path (stringToToken : string -> int<token>)
             |> Array.map stringToToken
             )
 
-let isParsed parserSource input = 
-    Yard.Generators.GLL.AbstractParser.isParsed parserSource input
+let isParsed parserSource (input : LinearInput )= 
+    let myParser = new GLLParser(parserSource, input, false)
+    myParser.ParsedHaveResultOfLength(input.Input.Length)
 
 let shouldBeTrue res = 
-    Assert.AreEqual(res, true, "Not parsed")        
-
+    Assert.AreEqual(res, true, "Not parsed")
          
 let getParserSource grammarFile = 
     let fe = new YardFrontend()
@@ -75,7 +75,7 @@ let runTest grammarFile inputFile =
 let checkAst grammarFile inputFile nodesCount edgesCount termsCount ambiguityCount = 
     let parser = getParserSource grammarFile
     let input  = getLinearInput inputFile parser.StringToToken
-    let tree = buildAst parser input
+    let tree = (new GLLParser(parser, input, true)).BuildAst()
     printfn "%A" tree
     tree.AstToDot (grammarFilesPath + inputFile + ".dot")
     let n, e, t, amb = tree.CountCounters
@@ -87,9 +87,10 @@ let checkAst grammarFile inputFile nodesCount edgesCount termsCount ambiguityCou
     Assert.Pass()
 
 let checkIntervals grammarFile inputFile (intervals : _[]) = 
-    let parser = getParserSource grammarFile
-    let input  = getLinearInputWithAllStartingPos inputFile parser.StringToToken
-    let ranges = getAllRangesForStartState parser input
+    let parserSource = getParserSource grammarFile
+    let input  = getLinearInputWithAllStartingPos inputFile parserSource.StringToToken
+    let myParser = new GLLParser(parserSource, input, false)
+    let ranges = myParser.GetAllRangesForStartState()
     printfn "%A" ranges
     let result = 
         ranges
