@@ -362,6 +362,7 @@ type ControlFlowGraph(storage: IGraphStorage) =
         
         toDelete |> Set.iter (storage.RemoveNode >> assertTrue)
         storage.OutgoingEdges start |> Array.iter (fun (label, target) -> (storage.RemoveEdge start label target) |> assertTrue)
+        storage.IncomingEdges final |> Array.iter (fun (label, source) -> (storage.RemoveEdge source label final) |> assertTrue)
     
     let removeMethod (identifier: string) =
         let exists, nodeId = methodsIndex.FindNode identifier 

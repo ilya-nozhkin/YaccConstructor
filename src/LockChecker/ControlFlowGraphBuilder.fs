@@ -94,7 +94,6 @@ type ControlFlowGraphBuilder(graph: ControlFlowGraph) =
             let idSubs = edge.label.Substring 1
             let id = int idSubs
             let callInfo = queuedCallInfos.[id]
-            queuedCallInfos.Remove id |> assertTrue
             
             let newEdge = {startNode = source; label = "I"; endNode = target}
             
@@ -104,6 +103,7 @@ type ControlFlowGraphBuilder(graph: ControlFlowGraph) =
             ([|newEdge|])
         
     member this.UpdateMethod (method: Method) (edges: RawEdge []) (callInfos: CallInfo []) =
+        queuedCallInfos.Clear()
         callInfos |> Array.iter (fun info -> queuedCallInfos.Add (info.callId, info))
         
         let startState, finalState = graph.GetOrCreateMethodBoundStates method.methodName
