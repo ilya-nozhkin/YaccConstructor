@@ -108,7 +108,11 @@ type AutomataFactory() =
          epsilon = left.epsilon || right.epsilon}
     
     member this.Alternations (parts: AutomatonPart list) = 
-        List.fold this.Alternation parts.Head parts.Tail
+        assert (not parts.IsEmpty)
+        if parts.Tail.IsEmpty then
+            parts.Head
+        else
+            List.fold this.Alternation parts.Head parts.Tail
         (*{starts = parts |> List.collect (fun p -> p.starts);
          ends = parts |> List.collect (fun p -> p.ends);
          epsilon = parts |> List.exists (fun p -> p.epsilon)}*)

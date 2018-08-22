@@ -1,4 +1,4 @@
-namespace LockChecker.Graph
+namespace CfrAnalyser.Graph
 
 open AbstractAnalysis.Common
 open System
@@ -11,6 +11,8 @@ open QuickGraph
 open System.Runtime.Serialization
 open System.Runtime.CompilerServices
 open System.Text
+open CfrAnalyser
+open CfrAnalysisTemplate
 
 [<Measure>] type state
 [<Measure>] type local_state
@@ -93,9 +95,7 @@ type DelegateParameterInfo =
 type GraphStatistics =
     {
         nodes: int
-        calls: int
-        locks: int
-        asserts: int
+        userStatistics: IGraphStatistics
     }
 
 type DenseIdsProvider() = 
@@ -258,22 +258,10 @@ type ControlFlowGraph(storage: IGraphStorage) =
     let mutable maxAssert = 0
     
     let decoderInfo = Dictionary<string, string>()
+    let statistics = Analysis.instance.InitStatistics()
     
     let addEdgeToStatistics (label: string) =
-        if label.StartsWith "C" then 
-            let callId = int (label.Substring 1)
-            if (callId > maxCall) then 
-                maxCall <- callId
-                
-        if label.StartsWith "G" then 
-            let lockId = int (label.Substring 1)
-            if (lockId > maxLock) then 
-                maxLock <- lockId
-                
-        if label.StartsWith "A" then 
-            let assertId = int (label.Substring 1)
-            if (assertId > maxAssert) then 
-                maxAssert <- assertId
+        Analysis.instance.AddEdgeToStatistics(statistics, label)
     
     let assertTrue condition = 
         assert condition
@@ -654,9 +642,7 @@ type ControlFlowGraph(storage: IGraphStorage) =
     member this.GetStatistics() = 
         {
             nodes = (int (denseStatesIndex.GetMaxIndex())) + 1
-            calls = maxCall + 1
-            locks = maxLock + 1
-            asserts = maxAssert + 1
+            userStatistics = statistics
         }
     
     member this.DumpStatesLevel (writer: StreamWriter) = 
@@ -666,7 +652,7 @@ type ControlFlowGraph(storage: IGraphStorage) =
         
         let statistics = this.GetStatistics()
         
-        writer.WriteLine (sprintf "%i %i %i %i" statistics.nodes statistics.calls statistics.locks statistics.asserts)
+        //writer.WriteLine (sprintf "%i %i %i %i" statistics.nodes statistics.calls statistics.locks statistics.asserts)
         
         let starts = 
             methodsIndex.Pairs() 
@@ -763,25 +749,29 @@ type ControlFlowGraph(storage: IGraphStorage) =
     member this.GetParserInput (tokenizer: string -> int<token>) =
         let statistics = this.GetStatistics()
         let dynamicIndex = Array.zeroCreate (statistics.nodes)
+        let endToken = tokenizer "END"
         
         for i in [0 .. statistics.nodes - 1] do
             let exists, nodeId = denseStatesIndex.FindNode (i * 1<state>)
             if exists then
                 dynamicIndex.[i] <- 
                     storage.OutgoingEdges nodeId
-                    |> Array.map
-                        (
-                            fun (label, target) ->
-                                let exists, newTarget = denseStatesIndex.FindKey target
-                                assert exists
-                                
-                                let newTarget = int newTarget
-                                
-                                if label = "e" then
-                                    (-1<token>, newTarget)
-                                else 
-                                    (tokenizer label, newTarget)
-                        )
+                    |> fun edges -> 
+                        if edges.Length > 0 then 
+                            Array.map (
+                                fun (label, target) ->
+                                    let exists, newTarget = denseStatesIndex.FindKey target
+                                    assert exists
+                                    
+                                    let newTarget = int newTarget
+                                    
+                                    if label = "e" then
+                                        (-1<token>, newTarget)
+                                    else 
+                                        (tokenizer label, newTarget)
+                            ) edges
+                        else
+                            [|endToken, i|]
         
         ControlFlowInput (Array.empty, dynamicIndex)
     

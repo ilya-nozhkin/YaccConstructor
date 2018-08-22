@@ -1,4 +1,4 @@
-namespace LockChecker
+namespace CfrAnalyser
 
 module Logging =
     let mutable log: string -> unit =

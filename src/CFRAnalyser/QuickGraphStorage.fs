@@ -1,4 +1,4 @@
-namespace LockChecker.Graph
+namespace CfrAnalyser.Graph
 
 open System.IO
 open System.Collections.Generic
@@ -37,7 +37,7 @@ type QuickEdge(source: int, label: string, target: int) =
 
 type IQuickSerializable =
     abstract member Serialize: StreamWriter -> unit
-    abstract member Deserialize: StreamReader -> unit
+    abstract member Deserialize: StreamReader -> (int -> unit) -> unit
 
 type QuickGraphIndex<'key when 'key : equality>() = 
     let dictionary = Dictionary<'key, int>()
@@ -54,14 +54,16 @@ type QuickGraphIndex<'key when 'key : equality>() =
             for pair in (this :> IGraphIndex<'key>).Pairs() do
                 writer.WriteLine (sprintf "%s %s" ((snd pair).ToString()) ((fst pair).ToString()))
         
-        member this.Deserialize (reader: StreamReader) = 
+        member this.Deserialize (reader: StreamReader) (onNodeRestored: int -> unit) = 
             Seq.initInfinite (fun _ -> ReadHelper.tryReadLine reader)
             |> Seq.takeWhile (fun (success, _) -> success)
             |> Seq.iter 
                 (
                     fun (_, data) -> 
                         let value, key = ReadHelper.splitOnFirstOccurence data " "
-                        (this :> IGraphIndex<'key>).AddNode (ReadHelper.fromString<'key> key) (int value) |> ignore
+                        let value = int value
+                        onNodeRestored value
+                        (this :> IGraphIndex<'key>).AddNode (ReadHelper.fromString<'key> key) value |> ignore
                 )
     
     interface IGraphIndex<'key> with
@@ -131,7 +133,7 @@ type QuickGraphDenseIndex<'key when 'key : equality>(indexer: 'key -> int, deind
             for pair in (this :> IGraphIndex<'key>).Pairs() do
                 writer.WriteLine (sprintf "%s %s" ((snd pair).ToString()) ((fst pair).ToString()))
                 
-        member this.Deserialize (reader: StreamReader) = 
+        member this.Deserialize (reader: StreamReader) (onNodeRestored: int -> unit) = 
             let providerInfo = reader.ReadLine()
             this.Provider.RestoreStateFromString providerInfo
             Seq.initInfinite (fun _ -> ReadHelper.tryReadLine reader)
@@ -141,7 +143,7 @@ type QuickGraphDenseIndex<'key when 'key : equality>(indexer: 'key -> int, deind
                     fun (_, data) -> 
                         let value, key = ReadHelper.splitOnFirstOccurence data " "
                         let value = int value
-                        
+                        onNodeRestored value
                         (this :> IGraphIndex<'key>).AddNode (ReadHelper.fromString<'key> key) value |> ignore
                 )
 
@@ -181,8 +183,9 @@ type QuickGraphStorage() =
             (
                 fun (_, data) -> 
                     let key, value = ReadHelper.splitOnFirstOccurence data " "
+                    let key = int key
                     
-                    (this :> IGraphStorage).SetNodeLabel (int key) value |> assertTrue
+                    (this :> IGraphStorage).SetNodeLabel key value |> assertTrue
             )
     
     interface IGraphStorage with
@@ -308,7 +311,8 @@ type QuickGraphStorage() =
                 
                 assert (typeLine.[0] = '#')
                 
-                let blockType = (typeLine.Split ' ').[0]
+                let splitted = (typeLine.Split ' ')
+                let blockType = splitted.[0]
                 
                 match blockType with
                 | "#graph" -> 
@@ -319,5 +323,6 @@ type QuickGraphStorage() =
                     let data = reader.ReadLine()
                     denseNodesIndex.RestoreStateFromString data
                 | "#index" ->
-                    ((fst indices.[(typeLine.Split ' ').[1]]) :?> IQuickSerializable).Deserialize reader
+                    let name = splitted.[1]
+                    ((fst indices.[(typeLine.Split ' ').[1]]) :?> IQuickSerializable).Deserialize reader (this.AddVertex >> ignore)
                     

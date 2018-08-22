@@ -1,4 +1,4 @@
-﻿namespace LockChecker
+﻿namespace CfrAnalyser 
 
 open Yard.Generators.Common.ASTGLLFSA
 open AbstractAnalysis.Common
@@ -45,18 +45,18 @@ module ResultProcessing =
                             else
                                 None
                         | :? IntermediateNode | :? NonTerminalNode ->
-                            let mutable isS1 = false
+                            let mutable skip = false
                             
                             let mapOverChildren = 
                                 match node with
                                 | :? IntermediateNode as intermediate ->
                                     intermediate.MapChildren
                                 | :? NonTerminalNode as nonterminal ->
-                                    if intToString.[int nonterminal.Name] = "s1" then
-                                        isS1 <- true
+                                    if intToString.[int nonterminal.Name].[0] = '#' then
+                                        skip <- true
                                     nonterminal.MapChildren
                             
-                            if not isS1 then
+                            if not skip then
                                 visited.Add node |> ignore
 
                                 let result = new HashSet<string>()
@@ -90,7 +90,10 @@ module ResultProcessing =
     
     let decode (path: string) (decoder: string -> string) =
         path.Split ' '
-        |> Array.takeWhile (fun entity -> not (entity.StartsWith "RT"))
+        |> Array.skipWhile (fun entity -> not (entity.StartsWith "RT" || entity.StartsWith "A"))
+        |> Array.filter (fun entity -> entity.StartsWith "RT" || entity.StartsWith "A")
+        |> Array.map (fun entity -> if (entity.StartsWith "RT") then "C" + (entity.Substring 2) else entity)
         |> Array.map decoder
+        |> Array.rev
         |> String.concat "\n"
         

@@ -1,4 +1,4 @@
-namespace LockChecker
+namespace CfrAnalyser 
 
 open System.IO
 open System.Net
@@ -9,7 +9,7 @@ open System.Collections.Generic
 open System.Threading.Tasks
 
 open System.Threading
-open LockChecker.Graph
+open CfrAnalyser.Graph
 
 open AbstractAnalysis.Common
 open FSharpx.Collections.Experimental.BootstrappedQueue
@@ -110,7 +110,7 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         checkForInterrupt()
     
         let statistics = graph.GetStatistics()
-        let parserSource = Parsing.generateParser statistics.calls statistics.locks statistics.asserts
+        let parserSource = Parsing.generateParser statistics.userStatistics
         
         checkForInterrupt()
             

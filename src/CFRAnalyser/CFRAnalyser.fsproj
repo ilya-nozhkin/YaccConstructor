@@ -8,6 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="AssemblyInfo.fs" />
+    <Compile Include="TemplateLoader.fs" />
     <Compile Include="Logging.fs" />
     <Compile Include="Parsing.fs" />
     <Compile Include="InputLoading.fs" />
@@ -30,6 +31,7 @@
     <ProjectReference Include="..\AutomataCombinators\AutomataCombinators.fsproj">
       <Private>true</Private>
     </ProjectReference>
+    <ProjectReference Include="..\CFRAnalysisTemplate\CFRAnalysisTemplate.csproj" />
     <ProjectReference Include="..\GLLAbstractParser\GLLAbstractParser.fsproj">
       <Private>true</Private>
     </ProjectReference>

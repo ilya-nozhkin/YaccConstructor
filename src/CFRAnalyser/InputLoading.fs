@@ -1,11 +1,11 @@
-﻿module InputLoading
+﻿module CfrAnalyser.InputLoading
+
 open Yard.Generators.GLL
 open Yard.Generators.GLL.ParserCommon
 open AbstractAnalysis.Common
 open System.Collections.Generic
 
-open LockChecker
-open LockChecker
+open CfrAnalyser 
 open Yard.Generators.Common.AutomataCombinators
 open Yard.Generators.Common.FSA.Common
 open System.IO
@@ -58,6 +58,7 @@ let readStartComponents (lines: string []) =
     
     components, lines.[..lines.Length - 2 - count]
 
+    (*
 let parseGraphFile (graphStream: TextReader) = 
     let data =    Seq.initInfinite (fun _ -> graphStream.ReadLine()) 
                |> Seq.takeWhile ((<>) null)
@@ -119,3 +120,4 @@ let loadInput (graphStream: TextReader) =
         |> Array.map (Array.filter inputGraph.ContainsVertex)
 
     parserSource, inputGraph, filteredComponents
+    *)

@@ -1,4 +1,4 @@
-namespace LockChecker.Graph
+namespace CfrAnalyser.Graph
 
 open System.Collections.Generic
 open System.Runtime.Serialization
