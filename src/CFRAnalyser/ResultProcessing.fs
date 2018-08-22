@@ -89,11 +89,13 @@ module ResultProcessing =
         Option.defaultValue (HashSet<string>()) extractionResults
     
     let decode (path: string) (decoder: string -> string) =
-        path.Split ' '
-        |> Array.skipWhile (fun entity -> not (entity.StartsWith "RT" || entity.StartsWith "A"))
-        |> Array.filter (fun entity -> entity.StartsWith "RT" || entity.StartsWith "A")
+        let entities = path.Split ' ' |> Array.filter (fun entity -> entity.StartsWith "C" || entity.StartsWith "RT" || entity.StartsWith "A")
+        let first = entities.[0]
+        entities
+        |> Array.skipWhile (fun entity -> entity.StartsWith "C")
         |> Array.map (fun entity -> if (entity.StartsWith "RT") then "C" + (entity.Substring 2) else entity)
-        |> Array.map decoder
+        |> Array.map (fun entity -> (entity = first, entity))
+        |> Array.map (fun (isFirst, entity) -> (if isFirst then "*" else "") + (decoder entity))
         |> Array.rev
         |> String.concat "\n"
         
