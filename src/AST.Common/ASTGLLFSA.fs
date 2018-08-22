@@ -39,6 +39,13 @@ type NonTerminalNode =
                     for child in this.Others do
                         yield func child
         }
+    member this.MapFirstChild func =
+        seq {
+            if this.First <> Unchecked.defaultof<_>
+            then
+                yield func this.First
+        }
+    
 
     interface INode with
         member this.getExtension () = this.Extension
@@ -83,6 +90,13 @@ and IntermediateNode =
                 this.Others <- new ResizeArray<PackedNode>()
                 this.Others.Add child
         else this.First <- child
+    member this.MapFirstChild func =
+        seq {
+            if this.First <> Unchecked.defaultof<_>
+            then
+              yield func this.First
+        } 
+    
     member this.MapChildren func =
         seq {
             if this.First <> Unchecked.defaultof<_>

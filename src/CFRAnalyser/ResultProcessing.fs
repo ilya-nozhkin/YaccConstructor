@@ -8,84 +8,98 @@ module ResultProcessing =
     open System
     open System.IO
     open Yard.Generators.Common.AstNode
-
-    let extractNonCyclicPaths (root: INode) (intToString: Dictionary<int, string>) : HashSet<string> =
+    // extracts all non cyclic paths for start nonterminal, for another thakes only first child
+    let extractNonCyclicPath (root: INode) (intToString: Dictionary<int, string>) (interruptCheck : unit -> unit): HashSet<string> =
         let visited = new HashSet<INode>()
         let pathsCache = new Dictionary<INode, HashSet<string>>();
         
-        let rec extractNonCyclicPathsInternal (node: INode): HashSet<string> option =
-            if visited.Contains node then
-                None
-            else
-                if (pathsCache.ContainsKey node) then 
-                    Some pathsCache.[node]
-                else
-                    let results = match node with
-                        | :? EpsilonNode -> Some (HashSet<string>())
-                        | :? TerminalNode as terminal -> 
-                            if (terminal.Name = -1<token>) then
-                                Some (HashSet<string>())
-                            else 
-                                let result = new HashSet<string>([intToString.[int terminal.Name]])
-                                pathsCache.Add (node, result)
-                                Some result
-                        | :? PackedNode as packed -> 
-                            let left = extractNonCyclicPathsInternal packed.Left
-                            let right = extractNonCyclicPathsInternal packed.Right
-                            
-                            if left.IsSome && right.IsSome then
-                                if   left.Value.Count = 0  then right
-                                elif right.Value.Count = 0 then left
-                                else
-                                    let result = new HashSet<string>()
-                                    for leftPart in left.Value do
-                                        for rightPart in right.Value do
-                                            result.Add (leftPart + " " + rightPart) |> ignore
-                                    Some result
-                            else
-                                None
-                        | :? IntermediateNode | :? NonTerminalNode ->
-                            let mutable skip = false
-                            
-                            let mapOverChildren = 
-                                match node with
-                                | :? IntermediateNode as intermediate ->
-                                    intermediate.MapChildren
-                                | :? NonTerminalNode as nonterminal ->
-                                    if intToString.[int nonterminal.Name].[0] = '#' then
-                                        skip <- true
-                                    nonterminal.MapChildren
-                            
-                            if not skip then
-                                visited.Add node |> ignore
-
-                                let result = new HashSet<string>()
-                                let pathSets = 
-                                    mapOverChildren (fun child -> extractNonCyclicPathsInternal child)
-                                    |> Seq.filter Option.isSome
-                                    |> Seq.map Option.get
-                                
-                                for pathSet in pathSets do
-                                    result.UnionWith pathSet
-                                
-                                pathsCache.Add(node, result)
-                                
-                                visited.Remove node |> ignore
-                                
-                                Some result
-                            else 
-                                Some (HashSet<string>())
-                        | _ -> failwith "a"
-                        
-                    if results.IsSome then
-                        if results.Value.Count > 10 then
-                            Some (HashSet<string>(Seq.take 10 results.Value))
-                        else
-                            results
+        let rec extractNonCyclicPathsInternal (processAllChildren : bool) (node: INode) : HashSet<string> option =
+            interruptCheck()
+            if visited.Contains node then None else
+            if (pathsCache.ContainsKey node) then pathsCache.[node] |> Some else
+            let results = 
+                match node with
+                | :? EpsilonNode -> HashSet<string>() |> Some
+                | :? TerminalNode as terminal -> 
+                    if (terminal.Name = -1<token>)
+                    then
+                        Some (HashSet<string>())
                     else 
+                        let result = new HashSet<string>([intToString.[int terminal.Name]])
+                        pathsCache.Add (node, result)
+                        Some result
+                | :? PackedNode as packed -> 
+                    let left = extractNonCyclicPathsInternal processAllChildren packed.Left 
+                    let right = extractNonCyclicPathsInternal processAllChildren packed.Right
+                    
+                    if left.IsSome && right.IsSome
+                    then
+                        if left.Value.Count = 0 
+                        then right
+                        elif right.Value.Count = 0
+                        then left
+                        else
+                            let result = new HashSet<string>()
+                            for leftPart in left.Value do
+                                for rightPart in right.Value do
+                                    result.Add (leftPart + " " + rightPart) |> ignore
+                            Some result
+                    else
                         None
+                | :? IntermediateNode | :? NonTerminalNode ->
+                    let mutable skip = false
+                    
+                    let mapOverChildren, processAllIntermedChildren = 
+                        match node with
+                        | :? IntermediateNode as intermediate ->
+                            if processAllChildren
+                            then 
+                                intermediate.MapChildren
+                            else
+                                intermediate.MapFirstChild
+                            , true
+                        | :? NonTerminalNode as nonterminal ->
+                            if intToString.[int nonterminal.Name].[0] = '#'
+                            then
+                                skip <- true
+                            if processAllChildren
+                            then 
+                                nonterminal.MapChildren
+                            else
+                                nonterminal.MapFirstChild
+                            , false
+                        | _ -> failwith "unexpected SPPF node type"
+                    
+                    if not skip then
+                        visited.Add node |> ignore
+
+                        let result = new HashSet<string>()
+                        let pathSets = 
+                            mapOverChildren (fun child -> extractNonCyclicPathsInternal processAllChildren child)
+                            |> Seq.filter Option.isSome
+                            |> Seq.map Option.get
                         
-        let extractionResults = extractNonCyclicPathsInternal root
+                        for pathSet in pathSets do
+                            result.UnionWith pathSet
+                        
+                        pathsCache.Add(node, result)
+                        
+                        visited.Remove node |> ignore
+                        
+                        Some result
+                    else 
+                        Some (HashSet<string>())
+                | _ -> failwith "unexpected SPPF node type"
+                
+            if results.IsSome then
+                if results.Value.Count > 10 then
+                    Some (HashSet<string>(Seq.take 10 results.Value))
+                else
+                    results
+            else 
+                None
+                        
+        let extractionResults = extractNonCyclicPathsInternal true root
         Option.defaultValue (HashSet<string>()) extractionResults
     
     let decode (path: string) (decoder: string -> string) =

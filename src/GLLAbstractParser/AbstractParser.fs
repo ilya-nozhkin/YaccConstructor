@@ -205,7 +205,7 @@ type GLLParser(parser : ParserSourceGLL, input : IParserInput, buildTree : bool)
     member this.ParseMore (newStartPositions : int<positionInInput> array) isInterrupted =
         this.InterruptableParseFromPositions newStartPositions isInterrupted
         sppf.GetRootsForStart gss newStartPositions
-    
+        
     member this.ParsedHaveResultOfLength length = 
         this.Parse()
         this.FindVertices gss parser.StartState

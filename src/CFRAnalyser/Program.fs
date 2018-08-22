@@ -23,7 +23,7 @@ let printAllPaths (roots: INode []) (parserSource: ParserSourceGLL) (outputStrea
         let result = 
             let res = new HashSet<_>()
             roots
-            |> Array.map (fun x -> ResultProcessing.extractNonCyclicPaths x parserSource.IntToString)
+            |> Array.map (fun x -> ResultProcessing.extractNonCyclicPath x parserSource.IntToString (fun () -> ()))
             |> Array.iter (fun s -> res.UnionWith s)
             res
 

@@ -127,9 +127,9 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         
     let performParsing (reader: StreamReader) (writer: StreamWriter) (startFiles: string []) =
         let mutable cancellation: CancellationTokenSource = null
-        let mutable cancelled = false
+        let cancelled = ref false
         
-        let checkForInterrupt = (fun () -> if cancelled then raise (new ThreadInterruptedException()))
+        let checkForInterrupt = (fun () -> if !cancelled then raise (new ThreadInterruptedException()))
         
         let asyncMessage = reader.ReadLineAsync()
         let asyncCanceller = 
@@ -138,7 +138,7 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
                     if completed.Result = "interrupt" then 
                         if cancellation <> null then
                             cancellation.Cancel()
-                        cancelled <- true
+                        cancelled := true
             )
             
         asyncReadTask <- asyncCanceller
@@ -169,7 +169,7 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         let results = 
             let temporaryResults = new HashSet<_>()
             roots
-            |> Array.map (fun x -> ResultProcessing.extractNonCyclicPaths x (parser.Value.Source.IntToString))
+            |> Array.map (fun x -> ResultProcessing.extractNonCyclicPath x (parser.Value.Source.IntToString) checkForInterrupt)
             |> Array.iter (fun s -> temporaryResults.UnionWith s)
             temporaryResults
         
