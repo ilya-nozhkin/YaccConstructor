@@ -1,30 +1,71 @@
 ﻿using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 
 namespace CfrAnalysisTemplate
 {
-    public interface IAutomatonPart
+    public static class FactoryHolder
     {
+        public static IAutomataFactory Factory;
+
+        public static void SetFactory(IAutomataFactory factory)
+        {
+            Factory = factory;
+        }
     }
-    
-    public interface IToken
+
+    public abstract class AutomatonPart
     {
+        public static AutomatonPart operator -(AutomatonPart left, AutomatonPart right)
+        {
+            return FactoryHolder.Factory.Sequence(left, right);
+        }
+
+        public static AutomatonPart operator |(AutomatonPart left, AutomatonPart right)
+        {
+            return FactoryHolder.Factory.Alternation(left, right);
+        }
+
+        public static bool operator >=(string name, AutomatonPart body)
+        {
+            FactoryHolder.Factory.Rule(name, body);
+            return true;
+        }
+
+        public static bool operator <=(string name, AutomatonPart body)
+        {
+            FactoryHolder.Factory.Start(name, body);
+            return true;
+        }
+    }
+
+    public abstract class Token
+    {
+        public static AutomatonPart operator !(Token token)
+        {
+            return FactoryHolder.Factory.Terminal(token);
+        }
+
+        public static AutomatonPart operator ~(Token token)
+        {
+            return FactoryHolder.Factory.Reference(token);
+        }
     }
 
     public interface IAutomataFactory
     {
-        IToken TerminalToken(string name);
-        IToken NonterminalToken(string name);
+        Token TerminalToken(string name);
+        Token NonterminalToken(string name);
 
-        IAutomatonPart Terminal(IToken token);
-        IAutomatonPart Reference(IToken token);
-        IAutomatonPart Final();
+        AutomatonPart Terminal(Token token);
+        AutomatonPart Reference(Token token);
+        AutomatonPart Final();
 
-        IAutomatonPart Sequence(IAutomatonPart left, IAutomatonPart right);
-        IAutomatonPart Alternation(IAutomatonPart left, IAutomatonPart right);
-        IAutomatonPart Alternations(IEnumerable<IAutomatonPart> parts);
+        AutomatonPart Sequence(AutomatonPart left, AutomatonPart right);
+        AutomatonPart Alternation(AutomatonPart left, AutomatonPart right);
+        AutomatonPart Alternations(IEnumerable<AutomatonPart> parts);
 
-        void Rule(string name, IAutomatonPart body);
-        void Start(string name, IAutomatonPart body);
+        void Rule(string name, AutomatonPart body);
+        void Start(string name, AutomatonPart body);
     }
 
     public interface IGraphStatistics
@@ -35,7 +76,6 @@ namespace CfrAnalysisTemplate
     {
         IGraphStatistics InitStatistics();
         void AddEdgeToStatistics(IGraphStatistics statistics, string label);
-
-        void ConstructAutomaton(IAutomataFactory factory, IGraphStatistics statistics);
+        void ConstructAutomaton(IGraphStatistics statistics);
     }
 }

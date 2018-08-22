@@ -56,48 +56,47 @@ module Parsing =
     open System.Threading
     open FSharpx.Collections
     open System.Threading.Tasks
-    open QuickGraph
     open CfrAnalyser
 
     type TokenAdapter(token) =
+        inherit Token()
         member this.Token = token
-        interface IToken
 
     type AutomatonPartAdapter(part) =
+        inherit AutomatonPart()
         member this.AutomatonPart = part
-        interface IAutomatonPart
 
     type AutomataFactoryAdapter() =
         let internalFactory = new AutomataFactory()
-        let epsilon = AutomatonPartAdapter(internalFactory.Epsilon) :> IAutomatonPart
+        let epsilon = AutomatonPartAdapter(internalFactory.Epsilon) :> AutomatonPart
 
         member this.Produce() = 
             internalFactory.Produce()
 
         interface IAutomataFactory with
             member this.TerminalToken name =
-                TokenAdapter(internalFactory.TerminalToken name) :> IToken
+                TokenAdapter(internalFactory.TerminalToken name) :> Token
 
             member this.NonterminalToken name =
-                TokenAdapter(internalFactory.NonterminalToken name) :> IToken
+                TokenAdapter(internalFactory.NonterminalToken name) :> Token
 
             member this.Terminal token =
-                AutomatonPartAdapter(internalFactory.Terminal (token :?> TokenAdapter).Token) :> IAutomatonPart
+                AutomatonPartAdapter(internalFactory.Terminal (token :?> TokenAdapter).Token) :> AutomatonPart
 
             member this.Reference token =
-                AutomatonPartAdapter(internalFactory.Reference (token :?> TokenAdapter).Token) :> IAutomatonPart
+                AutomatonPartAdapter(internalFactory.Reference (token :?> TokenAdapter).Token) :> AutomatonPart
 
             member this.Final() =
                 epsilon
 
             member this.Sequence(left, right) =
-                AutomatonPartAdapter(internalFactory.Sequence ((left :?> AutomatonPartAdapter).AutomatonPart) ((right :?> AutomatonPartAdapter).AutomatonPart)) :> IAutomatonPart
+                AutomatonPartAdapter(internalFactory.Sequence ((left :?> AutomatonPartAdapter).AutomatonPart) ((right :?> AutomatonPartAdapter).AutomatonPart)) :> AutomatonPart
 
             member this.Alternation(left, right) =
-                AutomatonPartAdapter(internalFactory.Alternation ((left :?> AutomatonPartAdapter).AutomatonPart) ((right :?> AutomatonPartAdapter).AutomatonPart)) :> IAutomatonPart
+                AutomatonPartAdapter(internalFactory.Alternation ((left :?> AutomatonPartAdapter).AutomatonPart) ((right :?> AutomatonPartAdapter).AutomatonPart)) :> AutomatonPart
 
             member this.Alternations(parts) =
-                AutomatonPartAdapter(internalFactory.Alternations (parts |> Seq.map (fun part -> (part :?> AutomatonPartAdapter).AutomatonPart) |> Seq.toList)) :> IAutomatonPart
+                AutomatonPartAdapter(internalFactory.Alternations (parts |> Seq.map (fun part -> (part :?> AutomatonPartAdapter).AutomatonPart) |> Seq.toList)) :> AutomatonPart
 
             member this.Rule(name, body) =
                 internalFactory.Rule name (body :?> AutomatonPartAdapter).AutomatonPart
@@ -107,8 +106,9 @@ module Parsing =
 
     let generateParser (statistics: IGraphStatistics) =
         let factory = new AutomataFactoryAdapter()
+        Analysis.setFactory (factory :> IAutomataFactory)
 
-        Analysis.instance.ConstructAutomaton(factory, statistics)
+        Analysis.instance.ConstructAutomaton(statistics)
 
         let automata = factory.Produce()
 

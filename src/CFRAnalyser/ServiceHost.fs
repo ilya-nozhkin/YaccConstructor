@@ -99,23 +99,27 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
     
     let prepareForParsing (checkForInterrupt: unit -> unit) =
         checkForInterrupt()
-            
-        use disposableEdges = graph.GenerateWeakEdges()
-        
+
+        let startTime = System.DateTime.Now
+        //use disposableEdges = graph.GenerateWeakEdges()
+        Logging.log (sprintf "Weak edges generation time is %A" (System.DateTime.Now - startTime))
         checkForInterrupt()
         
+        let startTime = System.DateTime.Now
         use statesWriter = new StreamWriter(@"C:\hackathon\states.graph")
         graph.DumpStatesLevel statesWriter
-        
+        Logging.log (sprintf "States level dumping time is %A" (System.DateTime.Now - startTime))
         checkForInterrupt()
     
+        let startTime = System.DateTime.Now
         let statistics = graph.GetStatistics()
         let parserSource = Parsing.generateParser statistics.userStatistics
-        
+        Logging.log (sprintf "Parser generation time is %A" (System.DateTime.Now - startTime))
         checkForInterrupt()
             
+        let startTime = System.DateTime.Now
         let input = graph.GetParserInput parserSource.StringToToken
-        
+        Logging.log (sprintf "Input generation time is %A" (System.DateTime.Now - startTime))
         checkForInterrupt()
         
         parser <- Some (new GLLParser(parserSource, input, true))
@@ -144,8 +148,11 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         
         checkForInterrupt()
         
+        let startTime = System.DateTime.Now
         let starts = graph.GetStartsForFiles startFiles |> Array.map ((*) 1<positionInInput>)
-        
+        Logging.log (sprintf "Starts extraction time is %A" (System.DateTime.Now - startTime))
+
+        let startTime = System.DateTime.Now
         let task, parserCancellation = Parsing.parseAsync (Option.get parser) starts
         cancellation <- parserCancellation
         
@@ -153,11 +160,12 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
             asyncCanceller.Start()
         
         task.Wait()
-        
         let roots = task.Result
         
+        Logging.log (sprintf "Parsing time is %A" (System.DateTime.Now - startTime))
         checkForInterrupt()
         
+        let startTime = System.DateTime.Now
         let results = 
             let temporaryResults = new HashSet<_>()
             roots
@@ -165,8 +173,10 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
             |> Array.iter (fun s -> temporaryResults.UnionWith s)
             temporaryResults
         
+        Logging.log (sprintf "Paths extraction time is %A" (System.DateTime.Now - startTime))
         checkForInterrupt()
         
+        let startTime = System.DateTime.Now
         let decoder = graph.GetDecoder()
         for result in results do
             printfn "%s" result
@@ -177,6 +187,7 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
             writer.WriteLine decoded
             writer.WriteLine ()
             
+        Logging.log (sprintf "Decoding time is %A" (System.DateTime.Now - startTime))
         writer.Flush()
     
     member this.Start() =
@@ -246,9 +257,11 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
                     success <- true
                 | "run_analysis" ->
                     if (restoredFrom <> "") then
+                        let startTime = System.DateTime.Now
                         use fileStream = new StreamWriter (restoredFrom)
                         graph.Serialize fileStream
                         graph.GetStorage.DumpToDot (@"C:\hackathon\graph.db")
+                        Logging.log (sprintf "Database saving time is %A" (System.DateTime.Now - startTime))
                     
                     let message = RunAnalysisMessage.FromJson dataStream
                     performParsing reader writer message.starts
