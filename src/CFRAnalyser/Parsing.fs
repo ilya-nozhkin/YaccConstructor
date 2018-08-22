@@ -126,8 +126,12 @@ module Parsing =
                 (
                     fun () -> 
                         try
-                            parser.ParseMore starts (fun () -> token.IsCancellationRequested)
+                            printfn "----------- Parsing started ----------"
+                            let res = parser.ParseMore starts (fun () -> token.IsCancellationRequested)
+                            printfn "----------- Parsing finished ---------"
+                            res
                         with e ->
+                            printfn "----------- Parsing canceled ---------"
                             printfn "%s" e.Message
                             printfn "%s" e.StackTrace
                             raise e
