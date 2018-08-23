@@ -13,7 +13,7 @@ module ResultProcessing =
         let visited = new HashSet<INode>()
         let pathsCache = new Dictionary<INode, HashSet<string>>();
         
-        let rec extractNonCyclicPathsInternal (processAllChildren : bool) (node: INode) : HashSet<string> option =
+        let rec extractNonCyclicPathsInternal (node: INode) : HashSet<string> option =
             interruptCheck()
             if visited.Contains node then None else
             if (pathsCache.ContainsKey node) then pathsCache.[node] |> Some else
@@ -29,8 +29,8 @@ module ResultProcessing =
                         pathsCache.Add (node, result)
                         Some result
                 | :? PackedNode as packed -> 
-                    let left = extractNonCyclicPathsInternal processAllChildren packed.Left 
-                    let right = extractNonCyclicPathsInternal processAllChildren packed.Right
+                    let left = extractNonCyclicPathsInternal packed.Left 
+                    let right = extractNonCyclicPathsInternal packed.Right
                     
                     if left.IsSome && right.IsSome
                     then
@@ -49,25 +49,15 @@ module ResultProcessing =
                 | :? IntermediateNode | :? NonTerminalNode ->
                     let mutable skip = false
                     
-                    let mapOverChildren, processAllIntermedChildren = 
+                    let mapOverChildren = 
                         match node with
                         | :? IntermediateNode as intermediate ->
-                            if processAllChildren
-                            then 
-                                intermediate.MapChildren
-                            else
-                                intermediate.MapFirstChild
-                            , true
+                            intermediate.MapFirstChild
                         | :? NonTerminalNode as nonterminal ->
                             if intToString.[int nonterminal.Name].[0] = '#'
                             then
                                 skip <- true
-                            if processAllChildren
-                            then 
-                                nonterminal.MapChildren
-                            else
-                                nonterminal.MapFirstChild
-                            , false
+                            nonterminal.MapFirstChild
                         | _ -> failwith "unexpected SPPF node type"
                     
                     if not skip then
@@ -75,7 +65,7 @@ module ResultProcessing =
 
                         let result = new HashSet<string>()
                         let pathSets = 
-                            mapOverChildren (fun child -> extractNonCyclicPathsInternal processAllChildren child)
+                            mapOverChildren (fun child -> extractNonCyclicPathsInternal child)
                             |> Seq.filter Option.isSome
                             |> Seq.map Option.get
                         
@@ -99,7 +89,7 @@ module ResultProcessing =
             else 
                 None
                         
-        let extractionResults = extractNonCyclicPathsInternal true root
+        let extractionResults = extractNonCyclicPathsInternal root
         Option.defaultValue (HashSet<string>()) extractionResults
     
     let decode (path: string) (decoder: string -> string) =
