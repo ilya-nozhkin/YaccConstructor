@@ -87,7 +87,7 @@ type GLLParser(parser : ParserSourceGLL, input : IParserInput, buildTree : bool)
 //                if startV.P.Count > 0
 //                then 
                 startV.P.SetP
-                |> ResizeArray.iter(fun p -> 
+                |> Seq.iter(fun p -> 
                     if buildTree
                     then 
                         let y,nontermNode = sppf.GetNodes stateToContinue curContext.GssVertex.Nonterm curContext.Data p.data
@@ -228,7 +228,7 @@ type GLLParser(parser : ParserSourceGLL, input : IParserInput, buildTree : bool)
     member this.ParsedHaveResultOfLength length = 
         this.Parse()
         this.FindVertices gss parser.StartState
-        |> Seq.exists (fun v -> v.P.SetP |> ResizeArray.exists (fun p -> int p.posInInput = length))
+        |> Seq.exists (fun v -> v.P.SetP |> Seq.exists (fun p -> int p.posInInput = length))
     
     member this.GetAllRangesForState gss state =
         this.FindVertices gss state

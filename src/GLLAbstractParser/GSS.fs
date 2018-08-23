@@ -18,7 +18,7 @@ type PoppedData =
 [<Measure>] type compressedPosInInputAndGrammar
 
 type PopSet () = 
-    let setP = new ResizeArray<PoppedData>() 
+    let setP = new HashSet<PoppedData>() 
 
     member this.SetP = setP
     member this.Add x = 

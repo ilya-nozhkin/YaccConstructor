@@ -7,6 +7,7 @@
     <NoWarn>NU1701</NoWarn>
   </PropertyGroup>
   <ItemGroup>
+    <None Include="app.config" />
     <Compile Include="AssemblyInfo.fs" />
     <Compile Include="Logging.fs" />
     <Compile Include="TemplateLoader.fs" />
@@ -19,6 +20,7 @@
     <Compile Include="ServiceHost.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
+  <ItemGroup />
   <ItemGroup>
     <PackageReference Include="Argu" Version="5.1.0" />
     <PackageReference Include="System.ServiceModel.Primitives" Version="4.5.3" />

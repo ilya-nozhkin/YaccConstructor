@@ -214,7 +214,7 @@ type SPPF(startState : int<positionInGrammar>, finalStates : HashSet<int<positio
         gssRoots
         |> Array.collect (fun x ->
             x.P.SetP
-            |> ResizeArray.toArray
+            |> Seq.toArray
             |> Array.choose (fun x -> 
                 match x.data with
                 | TreeNode n -> 
@@ -237,7 +237,7 @@ type SPPF(startState : int<positionInGrammar>, finalStates : HashSet<int<positio
         gssRoots
         |> Array.collect (fun x ->
             x.P.SetP
-            |> ResizeArray.toArray
+            |> Seq.toArray
             |> Array.choose (fun x -> 
                 match x.data with
                 | TreeNode n -> 
