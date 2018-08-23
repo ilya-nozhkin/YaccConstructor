@@ -28,6 +28,10 @@ type GLLParser(parser : ParserSourceGLL, input : IParserInput, buildTree : bool)
         then TreeNode(-1<nodeMeasure>)
         else Length(0us)
     
+    let mutable singleResult : INode = null
+    
+    let mutable positionOfSingleResult : int<positionInInput> option = None 
+    
     let epsilon = -1<token>
     
     let gss = new GSS()
@@ -45,8 +49,12 @@ type GLLParser(parser : ParserSourceGLL, input : IParserInput, buildTree : bool)
         if not <| gssVertex.ContainsContext posInInput posInGrammar data
         then pushContext posInInput posInGrammar gssVertex data
     
-    let rec pop (posInInput:int<positionInInput>) (gssVertex : GSSVertex) (newData : ParseData)=
+    let rec pop (posInInput:int<positionInInput>) (gssVertex : GSSVertex) (newData : ParseData) =
         let outEdges = gss.OutEdges gssVertex |> Array.ofSeq
+        
+        if (positionOfSingleResult.IsSome && gssVertex.Nonterm = parser.StartState && positionOfSingleResult.Value = gssVertex.PositionInInput)
+        then
+            singleResult <- sppf.Nodes.[match newData with | TreeNode t -> int t]
         
         if new PoppedData(posInInput, newData) |> gssVertex.P.Add |> not then () else
         if outEdges <> null && outEdges.Length <> 0
@@ -137,7 +145,7 @@ type GLLParser(parser : ParserSourceGLL, input : IParserInput, buildTree : bool)
             
         let startTime = ref System.DateTime.Now
     
-        while (setR.Count <> 0) && (not (isInterrupted())) do
+        while (setR.Count <> 0) && (isInterrupted() |> not) && (singleResult = null) do
             let currentContext = setR.Pop()
             
             let possibleNontermMovesInGrammar = parser.OutNonterms.[int currentContext.PosInGrammar]
@@ -203,8 +211,17 @@ type GLLParser(parser : ParserSourceGLL, input : IParserInput, buildTree : bool)
             Array.empty
     
     member this.ParseMore (newStartPositions : int<positionInInput> array) isInterrupted =
-        this.InterruptableParseFromPositions newStartPositions isInterrupted
-        sppf.GetRootsForStart gss newStartPositions
+        let results = new List<_>()
+        for pos in newStartPositions do 
+            positionOfSingleResult <- pos |> Some
+            //
+            this.InterruptableParseFromPositions [|pos|] isInterrupted
+            //
+            results.Add singleResult
+            singleResult <- null
+            positionOfSingleResult <- None
+        
+        results.ToArray()//sppf.GetRootsForStart gss newStartPositions
         
     member this.ParsedHaveResultOfLength length = 
         this.Parse()

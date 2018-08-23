@@ -41,16 +41,20 @@ let rnd = new System.Random()
 
 let getInputGraph tokenizer inputFile =    
     let inputFilesPath = Path.Combine (__SOURCE_DIRECTORY__, "..", "data", "AbstractGLL") + Path.DirectorySeparatorChar.ToString()
-
+    
     let edges = 
         File.ReadAllLines (inputFilesPath + inputFile)
         |> Array.filter(fun x -> not (x = ""))
         |> Array.map (fun s -> let x = s.Split([|' '|])
-                               (int x.[0]), (int x.[1]), x.[2])
+                               (int x.[0]), (int x.[1]), x.[2].ToUpper())
     let edg (f : int) (t : string) (l : int) = 
         new ParserEdge<_>(f, l, tokenizer (t.ToUpper()) |> int) 
+    
+    let startStatesDup = edges |> Array.map(fun (x, y, _) -> x * 1<positionInInput>, y * 1<positionInInput>) |> Array.unzip |> (fun (x, y) -> Array.concat [| x ;  y|])
+     
+    let startStates = new HashSet<_>(startStatesDup) |> Array.ofSeq
       
-    let g = new SimpleInputGraph<_>([|0<positionInInput>|], (fun x -> x* 1<token>))
+    let g = new SimpleInputGraph<_>((*[|0<positionInInput>|]*)startStates, (fun x -> x* 1<token>))
     
     [|for (first,last,tag) in edges -> edg first tag last |]
     |> g.AddVerticesAndEdgeRange
@@ -104,6 +108,37 @@ let sppfTest grammarFile inputGraph nonTermName maxLength =
 
 [<TestFixture>]
 type ``GLL abstract parser tests``() =
+    
+    [<Test>]
+    member this._TestShouldStackOverflow1() = 
+        test "ShouldStackOverflow.yrd" 
+            "SO_wc.txt"
+            0 0 0 0
+            
+    [<Test>]
+    member this._TestShouldStackOverflow2() = 
+        test "ShouldStackOverflow.yrd" 
+            "SO_ls.txt"
+            0 0 0 0
+    
+    [<Test>]
+    member this._TestShouldStackOverflow3() = 
+        test "ShouldStackOverflow.yrd" 
+            "SO_pr.txt"
+            32 66 3 1
+            
+    [<Test>]
+    member this._TestShouldStackOverflow4() = 
+        test "ShouldStackOverflow.yrd" 
+            "SO_bzip2.txt"
+            15 15 3 0        
+
+    [<Test>]
+    member this._TestShouldStackOverflow5() = 
+        test "ShouldStackOverflow.yrd" 
+            "SO_gzip.txt"
+            0 0 0 0
+    
     [<Test>]
     member this._01_SimpleSPPFTest() = 
         let vertices = new ResizeArray<int>()
