@@ -39,6 +39,7 @@ type optionsSet = {
     drawGraph: bool;
     graphOutput: string;
     asService: bool;
+    dllPath: string;
     port: int}
     
 let startAsConsoleApplication options = 
@@ -80,6 +81,7 @@ type CLIArguments =
     | Print_Stages
     | As_Service
     | Port of int
+    | Analysis of string
     | [<MainCommand; Last>] Graph_File of path:string
 with
     interface IArgParserTemplate with   
@@ -91,6 +93,7 @@ with
             | Print_Stages -> "Print stage name when each of them starts"
             | Graph_File path -> "Path to graph that should be parsed"
             | As_Service -> "Run Lock Checker as service that can be accessed through socket"
+            | Analysis path -> "Specify path to the DLL containing analysis instructions"
             | Port _ -> "Set port where the service will be located"
 
 open System.Net
@@ -114,7 +117,10 @@ let main argv =
             graphOutput = results.GetResult (Draw_Graph, defaultValue = "")
             asService = results.Contains As_Service
             port = results.GetResult (Port, defaultValue = 8888)
+            dllPath = results.GetResult (Analysis, defaultValue = "Template.dll")
         }
+  
+    Analysis.loadDll options.dllPath
     
     if options.asService then
         let serviceHost = 

@@ -8,8 +8,8 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="AssemblyInfo.fs" />
-    <Compile Include="TemplateLoader.fs" />
     <Compile Include="Logging.fs" />
+    <Compile Include="TemplateLoader.fs" />
     <Compile Include="Parsing.fs" />
     <Compile Include="InputLoading.fs" />
     <Compile Include="ControlFlowGraph.fs" />

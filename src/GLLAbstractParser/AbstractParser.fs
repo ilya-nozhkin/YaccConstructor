@@ -217,7 +217,9 @@ type GLLParser(parser : ParserSourceGLL, input : IParserInput, buildTree : bool)
             //
             this.InterruptableParseFromPositions [|pos|] isInterrupted
             //
-            results.Add singleResult
+            let cached = singleResult
+            if cached <> null then
+                results.Add cached
             singleResult <- null
             positionOfSingleResult <- None
         

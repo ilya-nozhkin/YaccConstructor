@@ -92,6 +92,8 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
     let mutable parserIsValid = false
     
     let mutable (parser: GLLParser option) = None
+    let mutable (currentInput: ControlFlowInput option) = None
+    let mutable endToken = -2<token>
     
     let invalidateParser() =
         parserIsValid <- false
@@ -101,7 +103,7 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         checkForInterrupt()
 
         let startTime = System.DateTime.Now
-        //use disposableEdges = graph.GenerateWeakEdges()
+        use disposableEdges = graph.GenerateWeakEdges()
         Logging.log (sprintf "Weak edges generation time is %A" (System.DateTime.Now - startTime))
         checkForInterrupt()
         
@@ -124,12 +126,15 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         
         parser <- Some (new GLLParser(parserSource, input, true))
         parserIsValid <- true
+
+        currentInput <- Some input
+        endToken <- parserSource.StringToToken "END"
         
     let performParsing (reader: StreamReader) (writer: StreamWriter) (startFiles: string []) =
         let mutable cancellation: CancellationTokenSource = null
-        let cancelled = ref false
+        let mutable cancelled = false
         
-        let checkForInterrupt = (fun () -> if !cancelled then raise (new ThreadInterruptedException()))
+        let checkForInterrupt = (fun () -> if cancelled then raise (new ThreadInterruptedException()))
         
         let asyncMessage = reader.ReadLineAsync()
         let asyncCanceller = 
@@ -138,9 +143,9 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
                     if completed.Result = "interrupt" then 
                         if cancellation <> null then
                             cancellation.Cancel()
-                        cancelled := true
+                        cancelled <- true
             )
-            
+        
         asyncReadTask <- asyncCanceller
             
         if not parserIsValid then
@@ -150,6 +155,10 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         
         let startTime = System.DateTime.Now
         let starts = graph.GetStartsForFiles startFiles |> Array.map ((*) 1<positionInInput>)
+        (*
+        for start in starts do
+            currentInput.Value.RemoveCyclesForStart (int start) endToken
+        *)
         Logging.log (sprintf "Starts extraction time is %A" (System.DateTime.Now - startTime))
 
         let startTime = System.DateTime.Now
@@ -178,7 +187,7 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         
         let startTime = System.DateTime.Now
         let decoder = graph.GetDecoder()
-        for result in results do
+        for result in (results |> Seq.filter ResultProcessing.validate) do
             printfn "%s" result
             
             let decoded = ResultProcessing.decode result decoder
@@ -236,6 +245,8 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
                     if System.IO.File.Exists message.sourcePath then
                         use reader = new StreamReader (message.sourcePath)
                         graph.Deserialize reader
+
+                        performParsing reader writer [|"39226c3d-c684-4be1-a13c-d229a4e18615(Psi.CSharp)-90F831B6[.NETFramework,Version=v4.6.1]/d:Src/d:Impl/d:Tree/f:CSharpExpressionBase.cs"|]
                         
                     invalidateParser()
                     success <- true

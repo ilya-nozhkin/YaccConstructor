@@ -54,13 +54,13 @@ type ControlFlowGraphBuilder(graph: ControlFlowGraph) =
             localToGlobalMap.Add (local, id)
             id
     
-    let processParameter (owner: string) (target: string) (parameter: PassedParameter) =
+    let processParameter (owner: string) (target: string) (callId: int) (parameter: PassedParameter) =
         if parameter.parameter <> -1 then
             graph.GetOrCreateDelegateParameter owner parameter.parameter |> ignore
             graph.AddDelegateParameterPassing owner parameter.parameter target parameter.id |> ignore
         else 
             assert (parameter.method.Length > 0)
-            graph.AddDelegateInstancePassing owner parameter.method target parameter.id
+            graph.AddDelegateInstancePassing owner parameter.method target parameter.id callId
     
     let processCallInfo (owner: string) (callInfo: CallInfo) (source: int<state>) (target: int<state>) =
         if callInfo.calledParameter <> -1 then
@@ -72,10 +72,9 @@ type ControlFlowGraphBuilder(graph: ControlFlowGraph) =
             let targetStart, targetFinal = graph.GetOrCreateMethodBoundStates callInfo.target
             
             let newEdge = {startNode = source; label = "I"; endNode = target}
-            
-            callInfo.passedParameters |> Array.iter (processParameter owner callInfo.target)
-            
             let callId = graph.GetFreeCallId()
+            
+            callInfo.passedParameters |> Array.iter (processParameter owner callInfo.target callId)
             
             let callLabel = "C" + callId.ToString()
             let returnLabel = "RT" + callId.ToString()

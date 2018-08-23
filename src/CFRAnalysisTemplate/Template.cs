@@ -76,6 +76,7 @@ namespace CfrAnalysisTemplate
     {
         IGraphStatistics InitStatistics();
         void AddEdgeToStatistics(IGraphStatistics statistics, string label);
+        void RemoveEdgeFromStatistics(IGraphStatistics statistics, string label);
         void ConstructAutomaton(IGraphStatistics statistics);
     }
 }

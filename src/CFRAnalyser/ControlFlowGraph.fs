@@ -203,7 +203,31 @@ type IGraphStorage =
     abstract member Serialize: StreamWriter -> unit
     abstract member Deserialize: StreamReader -> unit
     
-type ControlFlowInput(starts, dynamicEdgesIndex: (int<token> * int) [] []) = 
+type ControlFlowInput(starts, dynamicEdgesIndex: (int<token> * int) [] []) =
+    member this.RemoveCyclesForStart (start: int) (endToken: int<token>)=
+        let visited = Array.zeroCreate (dynamicEdgesIndex.Length) : bool []
+        let stack = new Stack<(int * bool)>()
+        stack.Push (start, false)
+
+        while stack.Count > 0 do
+            let (nodeId, viewed) = stack.Pop()
+
+            if viewed then
+                visited.[nodeId] <- false
+            else
+                visited.[nodeId] <- true
+                stack.Push (nodeId, true)
+
+                let edges = 
+                    dynamicEdgesIndex.[nodeId]
+                    |> Array.filter (fun (token, target) -> token = endToken || not visited.[target])
+                
+                dynamicEdgesIndex.[nodeId] <- edges
+
+                for (token, target) in edges do
+                    if token <> endToken then
+                        stack.Push (target, false)
+
     interface IParserInput with
         member this.InitialPositions = 
             starts |> Seq.map(fun x -> x * 1<positionInInput>) |> Seq.toArray
@@ -245,6 +269,9 @@ type ControlFlowGraph(storage: IGraphStorage) =
     let CALL id = "C" + id.ToString()
     let RETURN id = "RT" + id.ToString()
 
+    let DELEGATE_CALL id = "D" + id.ToString()
+    let DELEGATE_RETURN id = "RD" + id.ToString()
+
     let denseCallIdsProvider = DenseIdsProvider()
 
     let mutable filesIndex: IGraphIndex<string> = null
@@ -253,15 +280,14 @@ type ControlFlowGraph(storage: IGraphStorage) =
     
     let mutable denseStatesIndex: DenseGraphIndex<int<state>> = null
     
-    let mutable maxCall = 0
-    let mutable maxLock = 0
-    let mutable maxAssert = 0
-    
     let decoderInfo = Dictionary<string, string>()
     let statistics = Analysis.instance.InitStatistics()
     
     let addEdgeToStatistics (label: string) =
         Analysis.instance.AddEdgeToStatistics(statistics, label)
+
+    let removeEdgeFromStatistics (label: string) =
+        Analysis.instance.RemoveEdgeFromStatistics(statistics, label)
     
     let assertTrue condition = 
         assert condition
@@ -422,6 +448,7 @@ type ControlFlowGraph(storage: IGraphStorage) =
             storage.AddEdge startNode edge.label endNode |> assertTrue
     
     let onEdgeRemovedListener source (label: string) target =
+        removeEdgeFromStatistics label
         if label.StartsWith "C" then
             denseCallIdsProvider.FreeId (int (label.Substring 1))
             
@@ -596,11 +623,12 @@ type ControlFlowGraph(storage: IGraphStorage) =
         else
             possibleParameterNodes.[0]
     
-    member this.AddDelegateInstancePassing (method: string) (instance: string) (passedTo: string) (parameterId: int) =
+    member this.AddDelegateInstancePassing (method: string) (instance: string) (passedTo: string) (parameterId: int) (callId: int) =
         let exists, callerId = methodsIndex.FindNode method
         assert exists
         
         let instantiator = storage.CreateNode()
+        storage.SetNodeLabel instantiator (callId.ToString()) |> assertTrue
         
         this.GetOrCreateMethodBounds instance |> ignore
         
@@ -668,7 +696,7 @@ type ControlFlowGraph(storage: IGraphStorage) =
         for pair in decoderInfo do
             writer.WriteLine (pair.Key + " " + pair.Value)
     
-    member private this.CollectAllPossibleInstances (visited: IDictionary<int, string list>) (delegateNode: int) : string list =
+    member private this.CollectAllPossibleInstances (visited: IDictionary<int, (string * int) list>) (delegateNode: int) : (string * int) list =
         if (visited.ContainsKey delegateNode) then
             visited.[delegateNode]
         else
@@ -676,14 +704,22 @@ type ControlFlowGraph(storage: IGraphStorage) =
             
             let instances = queryReferencedNodes delegateNode INSTANTIATED_WITH
             let passings = queryReferencingNodes delegateNode PASSED_TO
+
+            let callId =
+                if instances.Length > 0 then
+                    let exists, label = storage.GetNodeLabel delegateNode
+                    assert exists
+                    int label
+                else
+                    -1
             
             let leftHalf =
                 instances 
                 |> List.ofArray
-                |> List.map (storage.GetNodeLabel >> (fun (exists, label) -> assert exists; label))
+                |> List.map (storage.GetNodeLabel >> (fun (exists, label) -> assert exists; (label, callId)))
             
             let rightHalf =
-                passings 
+                passings
                 |> List.ofArray
                 |> List.collect (this.CollectAllPossibleInstances visited)
             
@@ -695,7 +731,7 @@ type ControlFlowGraph(storage: IGraphStorage) =
         decoderInfo.[key] <- value
     
     member this.GenerateWeakEdges() = 
-        let cache = new SortedDictionary<int, string list>()
+        let cache = new SortedDictionary<int, (string * int) list>()
         for parameter in delegatesIndex.Pairs() do
             assert (fst parameter = snd parameter)
             let parameter = snd parameter
@@ -703,7 +739,7 @@ type ControlFlowGraph(storage: IGraphStorage) =
             let instances = this.CollectAllPossibleInstances cache parameter
             let instanceBounds = 
                 instances 
-                |> List.map (fun name -> (this.GetOrCreateMethodBounds name, name))
+                |> List.map (fun (name, callId) -> (this.GetOrCreateMethodBounds name, (name, callId)))
             
             let substitutions = queryReferencedNodes parameter SUBSTITUTES_TO
             let substitutionBounds = 
@@ -725,16 +761,16 @@ type ControlFlowGraph(storage: IGraphStorage) =
                             ((start, final), label)
                     )
             
-            for (instance, instanceName) in instanceBounds do
+            for (instance, (instanceName, callId)) in instanceBounds do
                 for (substitution, substitutionLabel) in substitutionBounds do
-                    let callId = this.GetFreeCallId()
+                    //let callId = this.GetFreeCallId()
                     
                     let decoderInfo = substitutionLabel + " " + instanceName
                     
-                    this.SetDecoderInfo (CALL callId) decoderInfo
+                    this.SetDecoderInfo (DELEGATE_CALL callId) decoderInfo
                     
-                    storage.AddWeakEdge (fst substitution) (CALL callId) (fst instance) |> assertTrue
-                    storage.AddWeakEdge (snd instance) (RETURN callId) (snd substitution) |> assertTrue
+                    storage.AddWeakEdge (fst substitution) (DELEGATE_CALL callId) (fst instance) |> assertTrue
+                    storage.AddWeakEdge (snd instance) (DELEGATE_RETURN callId) (snd substitution) |> assertTrue
             
         let clearWeakEdges = fun () -> this.ClearWeakEdges()
         

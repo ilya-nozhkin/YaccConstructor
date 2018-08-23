@@ -91,13 +91,38 @@ module ResultProcessing =
                         
         let extractionResults = extractNonCyclicPathsInternal root
         Option.defaultValue (HashSet<string>()) extractionResults
+   
+    let validate (path: string) = 
+        let calls = SortedSet<int>()
+
+        path.Split ' '
+        |> Array.takeWhile (fun entity -> (entity.StartsWith "C") || (entity.StartsWith "D"))
+        |> Array.forall 
+            (
+                fun entity -> 
+                    if entity.StartsWith "C" then
+                        calls.Add (int (entity.Substring(1))) |> ignore
+                        true
+                    else
+                        calls.Contains (int (entity.Substring(1)))
+            )
     
     let decode (path: string) (decoder: string -> string) =
-        let entities = path.Split ' ' |> Array.filter (fun entity -> entity.StartsWith "C" || entity.StartsWith "RT" || entity.StartsWith "A")
+        let firstAcceptance = set ["C"; "RT"; "D"; "RD"; "AR"; "AW"]
+        let secondAcceptance = set ["RT"; "RD"; "AR"; "AW"]
+        let transformation = dict [("RT", "C"); ("RD", "D"); ("AR", "AR"); ("AW", "AW")]
+        let accept (acceptance: Set<string>) = (Seq.takeWhile (fun c -> c >= 'A' && c <= 'Z') >> String.Concat >> (fun prefix -> acceptance.Contains prefix))
+        let entities = path.Split ' ' |> Array.filter (accept firstAcceptance)
         let first = entities.[0]
         entities
-        |> Array.skipWhile (fun entity -> entity.StartsWith "C")
-        |> Array.map (fun entity -> if (entity.StartsWith "RT") then "C" + (entity.Substring 2) else entity)
+        |> Array.filter (accept secondAcceptance)
+        |> Array.map 
+            (
+                fun entity -> 
+                    let prefix = entity |> Seq.takeWhile (fun c -> c >= 'A' && c <= 'Z') |> String.Concat
+                    let index = entity.Substring (prefix.Length)
+                    transformation.[prefix] + index
+            )
         |> Array.map (fun entity -> (entity = first, entity))
         |> Array.map (fun (isFirst, entity) -> (if isFirst then "*" else "") + (decoder entity))
         |> Array.rev
