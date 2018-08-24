@@ -75,6 +75,7 @@ namespace CfrAnalysisTemplate
     public interface ICfrAnalysis
     {
         IGraphStatistics InitStatistics();
+        string GlobalizeLabel(IGraphStatistics statistics, string label);
         void AddEdgeToStatistics(IGraphStatistics statistics, string label);
         void RemoveEdgeFromStatistics(IGraphStatistics statistics, string label);
         void ConstructAutomaton(IGraphStatistics statistics);

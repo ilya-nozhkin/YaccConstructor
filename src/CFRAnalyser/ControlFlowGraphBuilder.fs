@@ -2,6 +2,7 @@ namespace CfrAnalyser.Graph
 
 open System.Collections.Generic
 open System.Runtime.Serialization
+open CfrAnalyser
 
 [<DataContract>]
 type PassedParameter = 
@@ -38,6 +39,7 @@ type CallInfo =
 
 type ControlFlowGraphBuilder(graph: ControlFlowGraph) =
     let localToGlobalMap = new SortedDictionary<int<local_state>, int<state>>()
+    let sessionLabelsToGlobalMap = new Dictionary<string, string>()
     
     let queuedCallInfos = new SortedDictionary<int, CallInfo>()
     let queuedActions = new Queue<unit -> unit>()
@@ -98,7 +100,9 @@ type ControlFlowGraphBuilder(graph: ControlFlowGraph) =
             
             Array.append [|newEdge|] (processCallInfo owner callInfo source target)
         else
-            let newEdge = {startNode = source; label = edge.label; endNode = target}
+            let exists, globalized = sessionLabelsToGlobalMap.TryGetValue edge.label
+            let label = if exists then globalized else edge.label
+            let newEdge = {startNode = source; label = label; endNode = target}
             ([|newEdge|])
         
     member this.UpdateMethod (method: Method) (edges: RawEdge []) (callInfos: CallInfo []) =
@@ -134,4 +138,12 @@ type ControlFlowGraphBuilder(graph: ControlFlowGraph) =
         graph.UpdateFileInfo fileName newMethods
     
     member this.AddDecoderInfo key value =
-        graph.SetDecoderInfo key value
+        let exists, newKey = sessionLabelsToGlobalMap.TryGetValue key
+        let newKey = 
+            if exists then 
+                newKey
+            else
+                let newKey = Analysis.instance.GlobalizeLabel (graph.GetStatistics().userStatistics, key)
+                sessionLabelsToGlobalMap.Add (key, newKey)
+                newKey
+        graph.SetDecoderInfo newKey value

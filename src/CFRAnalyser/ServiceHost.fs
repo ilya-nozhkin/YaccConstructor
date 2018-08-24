@@ -131,22 +131,26 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         endToken <- parserSource.StringToToken "END"
         
     let performParsing (reader: StreamReader) (writer: StreamWriter) (startFiles: string []) =
-        let mutable cancellation: CancellationTokenSource = null
-        let mutable cancelled = false
+        let cancellation: CancellationTokenSource ref = ref null
+        let cancelled = ref false
         
-        let checkForInterrupt = (fun () -> if cancelled then raise (new ThreadInterruptedException()))
+        let checkForInterrupt = (fun () -> if Volatile.Read(cancelled) then raise (new ThreadInterruptedException()))
         
         let asyncMessage = reader.ReadLineAsync()
         let asyncCanceller = 
             asyncMessage.ContinueWith (
                 fun (completed: Task<_>) -> 
+                    printfn "received while parsing: %s" completed.Result
                     if completed.Result = "interrupt" then 
-                        if cancellation <> null then
-                            cancellation.Cancel()
-                        cancelled <- true
+                        if Volatile.Read(cancellation) <> null then
+                            Volatile.Read(cancellation).Cancel()
+                        Volatile.Write(cancelled, true)
             )
         
         asyncReadTask <- asyncCanceller
+        
+        if asyncCanceller.Status = TaskStatus.Created then
+            asyncCanceller.Start()
             
         if not parserIsValid then
             prepareForParsing checkForInterrupt
@@ -163,10 +167,7 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
 
         let startTime = System.DateTime.Now
         let task, parserCancellation = Parsing.parseAsync (Option.get parser) starts
-        cancellation <- parserCancellation
-        
-        if asyncCanceller.Status = TaskStatus.Created then
-            asyncCanceller.Start()
+        Volatile.Write(cancellation, parserCancellation)
         
         task.Wait()
         let roots = task.Result
@@ -246,7 +247,7 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
                         use reader = new StreamReader (message.sourcePath)
                         graph.Deserialize reader
 
-                        performParsing reader writer [|"39226c3d-c684-4be1-a13c-d229a4e18615(Psi.CSharp)-90F831B6[.NETFramework,Version=v4.6.1]/d:Src/d:Impl/d:Tree/f:CSharpExpressionBase.cs"|]
+                        //performParsing reader writer [|"39226c3d-c684-4be1-a13c-d229a4e18615(Psi.CSharp)-90F831B6[.NETFramework,Version=v4.6.1]/d:Src/d:Impl/d:Tree/f:CSharpExpressionBase.cs"|]
                         
                     invalidateParser()
                     success <- true

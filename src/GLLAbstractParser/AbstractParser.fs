@@ -132,6 +132,12 @@ type GLLParser(parser : ParserSourceGLL, input : IParserInput, buildTree : bool)
             else
                 pushContext nextPosInInput nextPosInGrammar currentContext.GssVertex (summLengths currentContext.Data (Length(1us)))
     
+    let mutable _currentContext: ContextFSA<GSSVertex> = new ContextFSA<GSSVertex>(-1<positionInInput>, -1<positionInGrammar>, new GSSVertex(-1<positionInGrammar>, -1<positionInInput>), Length 0us)
+    let processToken nextToken nextPosInInput =
+      let nextPosInGrammar = parser.StateAndTokenToNewState _currentContext.PosInGrammar nextToken
+      if nextPosInGrammar <> -10<positionInGrammar>
+      then eatTerm _currentContext nextToken nextPosInInput nextPosInGrammar
+    
     member this.InterruptableParseFromPositions (initialPositions : int<positionInInput> array) (isInterrupted : unit -> bool) =         
         let startContexts = 
             initialPositions
@@ -165,15 +171,19 @@ type GLLParser(parser : ParserSourceGLL, input : IParserInput, buildTree : bool)
             for curNonterm, nextState in possibleNontermMovesInGrammar do            
                 create currentContext nextState curNonterm
     
+            _currentContext <- currentContext
             /// Terminal transitions.
             input.ForAllOutgoingEdges
                 currentContext.PosInInput
+                processToken
+                (*
                 (fun nextToken nextPosInInput -> 
                     let nextPosInGrammar = parser.StateAndTokenToNewState currentContext.PosInGrammar nextToken
                     if nextPosInGrammar <> -10<positionInGrammar>
                     then eatTerm currentContext nextToken nextPosInInput nextPosInGrammar
                        //pushContext nextPosInInput nextPosInGrammar currentContext.GssVertex (currentContext.Length + 1us)
                 )            
+                *)
     
     member this.GetTree () = 
         if buildTree
