@@ -46,15 +46,16 @@ type GLLParser(parser : ParserSourceGLL, input : IParserInput, buildTree : bool)
 
     /// Adds new context to stack (setR) if it is first occurrence of this context (if SetU doesn't contain it).
     let addContext posInInput posInGrammar (gssVertex:GSSVertex) data =
-        if not <| gssVertex.ContainsContext posInInput posInGrammar data
+        if not <| gssVertex.ContainsContext posInInput posInGrammar data buildTree
         then pushContext posInInput posInGrammar gssVertex data
     
     let rec pop (posInInput:int<positionInInput>) (gssVertex : GSSVertex) (newData : ParseData) =
         let outEdges = gss.OutEdges gssVertex |> Array.ofSeq
         
-        if (positionOfSingleResult.IsSome && gssVertex.Nonterm = parser.StartState && positionOfSingleResult.Value = gssVertex.PositionInInput)
-        then
-            singleResult <- sppf.Nodes.[match newData with | TreeNode t -> int t]
+        if buildTree then
+           if (positionOfSingleResult.IsSome && gssVertex.Nonterm = parser.StartState && positionOfSingleResult.Value = gssVertex.PositionInInput)
+           then
+               singleResult <- sppf.Nodes.[match newData with | TreeNode t -> int t]
         
         if new PoppedData(posInInput, newData) |> gssVertex.P.Add |> not then () else
         if outEdges <> null && outEdges.Length <> 0

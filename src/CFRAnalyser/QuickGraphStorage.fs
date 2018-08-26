@@ -4,6 +4,9 @@ open System.IO
 open System.Collections.Generic
 open QuickGraph
 
+open PDASimulator
+open System
+
 module internal ReadHelper =
     let tryReadLine (reader: StreamReader) = 
         let peek = reader.Peek()
@@ -23,7 +26,7 @@ module internal ReadHelper =
             value :> obj :?> 't
         else 
             failwith "unknown value type"
-
+            
 type QuickEdge(source: int, label: string, target: int) = 
     inherit TaggedEdge<int, string>(source, target, label)
     

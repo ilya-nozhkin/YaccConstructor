@@ -1,0 +1,12 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Core.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharpx.Collections" Version="2.0.0-beta3" />
+    <PackageReference Include="FSharpx.Collections.Experimental" Version="2.0.0-beta2" />
+  </ItemGroup>
+</Project>

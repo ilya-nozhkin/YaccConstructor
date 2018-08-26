@@ -3,6 +3,8 @@
 open Yard.Generators.Common.ASTGLLFSA
 open AbstractAnalysis.Common
 open System.Collections.Generic
+open PDASimulator
+open CfrAnalyser.PDA
 
 module ResultProcessing =
     open System
@@ -92,21 +94,59 @@ module ResultProcessing =
         let extractionResults = extractNonCyclicPathsInternal root
         Option.defaultValue (HashSet<string>()) extractionResults
    
-    let validate (path: string) = 
+    let validate (path: string []) = 
         let calls = SortedSet<int>()
+        let returns = SortedSet<int>()
+        
+        let acceptance = set ["C"; "RT"; "D"; "RD"]
+        let accept (acceptance: Set<string>) = (Seq.takeWhile (fun c -> c >= 'A' && c <= 'Z') >> String.Concat >> (fun prefix -> acceptance.Contains prefix))
 
-        path.Split ' '
-        |> Array.takeWhile (fun entity -> (entity.StartsWith "C") || (entity.StartsWith "D"))
-        |> Array.forall 
-            (
-                fun entity -> 
-                    if entity.StartsWith "C" then
-                        calls.Add (int (entity.Substring(1))) |> ignore
-                        true
-                    else
-                        calls.Contains (int (entity.Substring(1)))
-            )
+        let firstCheck = 
+            path
+            |> Array.filter (accept acceptance)
+            |> Array.forall 
+                (
+                    fun entity -> 
+                        if entity.StartsWith "C" then
+                            calls.Add (int (entity.Substring(1))) |> ignore
+                            true
+                        elif entity.StartsWith "D" then
+                            calls.Contains (int (entity.Substring(1)))
+                        elif entity.StartsWith "RD" then
+                            returns.Add (int (entity.Substring(2))) |> ignore
+                            true
+                        else
+                            returns.Remove (int (entity.Substring(2))) |> ignore
+                            true
+                )
+        
+        firstCheck && (returns.Count = 0)
     
+    let extractAllValidPaths (onFound: string -> unit) (finals: HashSet<Context<MyState, MyEdge, MyNode>>) (rootContext: Context<MyState, MyEdge, MyNode>) = 
+        let pathsRoot = List.empty
+        let visited = new HashSet<Context<MyState, MyEdge, MyNode>>()
+        
+        //printfn "%s" (List.rev listPointer |> String.concat " ")
+        
+        let rec internalExtract (context: Context<MyState, MyEdge, MyNode>) listPointer = 
+            if not (visited.Contains context) then
+                visited.Add context |> ignore
+                
+                printfn "%s" (List.rev listPointer |> String.concat " ")
+        
+                for inheritance in context.children do
+                    if inheritance.Key.survived then
+                        internalExtract inheritance.Key (inheritance.Value.Label :: listPointer)
+                
+                if finals.Contains context then
+                    let result = listPointer |> List.toArray |> Array.rev
+                    if validate result then
+                        onFound (String.concat " " result)
+            
+                visited.Remove context |> ignore
+        
+        internalExtract rootContext pathsRoot
+            
     let decode (path: string) (decoder: string -> string) =
         let firstAcceptance = set ["C"; "RT"; "D"; "RD"; "AR"; "AW"]
         let secondAcceptance = set ["RT"; "RD"; "AR"; "AW"]

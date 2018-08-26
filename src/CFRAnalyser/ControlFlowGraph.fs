@@ -811,6 +811,32 @@ type ControlFlowGraph(storage: IGraphStorage) =
         
         ControlFlowInput (Array.empty, dynamicIndex)
     
+    member this.ConstructDynamicIndex() = 
+        let statistics = this.GetStatistics()
+        let dynamicIndex = Array.zeroCreate (statistics.nodes)
+        let endToken = "END"
+        
+        for i in [0 .. statistics.nodes - 1] do
+            let exists, nodeId = denseStatesIndex.FindNode (i * 1<state>)
+            if exists then
+                dynamicIndex.[i] <- 
+                    storage.OutgoingEdges nodeId
+                    |> fun edges -> 
+                        if edges.Length > 0 then 
+                            Array.map (
+                                fun (label, target) ->
+                                    let exists, newTarget = denseStatesIndex.FindKey target
+                                    assert exists
+                                    
+                                    let newTarget = int newTarget
+                                    
+                                    (label, newTarget)
+                            ) edges
+                        else
+                            [|endToken, i|]
+        
+        dynamicIndex
+    
     member this.GetStartsForFiles (files: string []) =
         let fileNodes = 
             files

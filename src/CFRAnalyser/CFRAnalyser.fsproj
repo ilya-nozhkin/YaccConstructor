@@ -14,8 +14,9 @@
     <Compile Include="Parsing.fs" />
     <Compile Include="InputLoading.fs" />
     <Compile Include="ControlFlowGraph.fs" />
-    <Compile Include="ResultProcessing.fs" />
     <Compile Include="QuickGraphStorage.fs" />
+    <Compile Include="MyPDA.fs" />
+    <Compile Include="ResultProcessing.fs" />
     <Compile Include="ControlFlowGraphBuilder.fs" />
     <Compile Include="ServiceHost.fs" />
     <Compile Include="Program.fs" />
@@ -27,6 +28,7 @@
     <PackageReference Include="System.ServiceModel.Web" Version="1.0.0" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\PDASimulator\PDASimulator.fsproj" />
     <ProjectReference Include="..\AST.Common\Common.AST.fsproj">
       <Private>true</Private>
     </ProjectReference>

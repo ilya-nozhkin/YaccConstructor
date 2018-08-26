@@ -51,18 +51,26 @@ type GSSVertex (nonterm: int<positionInGrammar>, posInInput: int<positionInInput
         , (CommonFuns.getRight (int64 compressedPos)) * 1<positionInGrammar>
 
     /// Checks for existing of context in SetU. If not adds it to SetU.
-    member this.ContainsContext (posInInput: int<positionInInput>) (posInGrammar : int<positionInGrammar>) (newData : ParseData)=
+    member this.ContainsContext (posInInput: int<positionInInput>) (posInGrammar : int<positionInGrammar>) (newData : ParseData) (buildTree: bool) =
         let compressedPositions =
             CommonFuns.pack posInInput posInGrammar 
             |> FSharp.Core.LanguagePrimitives.Int64WithMeasure  
         let cond = setU.ContainsKey compressedPositions
-        if cond
-        then 
-            let data = setU.[compressedPositions]
-            not <| data.Add newData
-        else 
-            setU.Add(compressedPositions, new SortedSet<_>([|newData|]))
-            false
+        if not buildTree then
+            if cond
+            then 
+                true
+            else 
+                setU.Add(compressedPositions, new SortedSet<_>([|newData|]))
+                false
+        else
+            if cond
+            then 
+                let data = setU.[compressedPositions]
+                not <| data.Add newData
+            else 
+                setU.Add(compressedPositions, new SortedSet<_>([|newData|]))
+                false
     override this.ToString () = sprintf "Nonterm: %i, Index: %i" this.Nonterm this.PositionInInput
 
 type GSSVertexInstanceHolder() =

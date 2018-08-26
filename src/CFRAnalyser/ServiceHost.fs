@@ -12,9 +12,8 @@ open System.Threading
 open CfrAnalyser.Graph
 
 open AbstractAnalysis.Common
-open FSharpx.Collections.Experimental.BootstrappedQueue
-open FSharpx.Collections.Experimental.BootstrappedQueue
-open FSharpx.Collections.Experimental.BootstrappedQueue
+open CfrAnalyser.PDA
+open PDASimulator
 open Yard.Generators.GLL.AbstractParser
 
 [<DataContract>]
@@ -106,7 +105,10 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         use disposableEdges = graph.GenerateWeakEdges()
         Logging.log (sprintf "Weak edges generation time is %A" (System.DateTime.Now - startTime))
         checkForInterrupt()
+       
+        graph.ConstructDynamicIndex()
         
+        (*
         let startTime = System.DateTime.Now
         use statesWriter = new StreamWriter(@"C:\hackathon\states.graph")
         graph.DumpStatesLevel statesWriter
@@ -123,12 +125,15 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         let input = graph.GetParserInput parserSource.StringToToken
         Logging.log (sprintf "Input generation time is %A" (System.DateTime.Now - startTime))
         checkForInterrupt()
+        *)
         
-        parser <- Some (new GLLParser(parserSource, input, true))
+        (*
+        parser <- Some (new GLLParser(parserSource, input, false))
         parserIsValid <- true
 
         currentInput <- Some input
         endToken <- parserSource.StringToToken "END"
+        *)
         
     let performParsing (reader: StreamReader) (writer: StreamWriter) (startFiles: string []) =
         let cancellation: CancellationTokenSource ref = ref null
@@ -152,19 +157,55 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         if asyncCanceller.Status = TaskStatus.Created then
             asyncCanceller.Start()
             
-        if not parserIsValid then
-            prepareForParsing checkForInterrupt
+        //if not parserIsValid then
+        //    prepareForParsing checkForInterrupt
+        
+        let dynamicIndex = prepareForParsing checkForInterrupt
         
         checkForInterrupt()
         
         let startTime = System.DateTime.Now
-        let starts = graph.GetStartsForFiles startFiles |> Array.map ((*) 1<positionInInput>)
+        let starts = graph.GetStartsForFiles startFiles
         (*
         for start in starts do
             currentInput.Value.RemoveCyclesForStart (int start) endToken
         *)
-        Logging.log (sprintf "Starts extraction time is %A" (System.DateTime.Now - startTime))
+        
+        //-------------------------------
+        
+        let pda = new MyPDA()
+        let simulation = Simulation(pda)
+        
+        let myGraph = MyGraph(dynamicIndex)
+        
+        let startContexts = starts |> Array.mapi (fun i start -> (i, start |> myGraph.GetNode |> simulation.Load i))
+        simulation.Run()
+        
+        Logging.log (sprintf "Simulation time is %A" (System.DateTime.Now - startTime))
+        let startTime = System.DateTime.Now
+        
+        let validPaths = Stack<string>() 
+        startContexts 
+        |> Array.filter (fun (i, context) -> context.survived)
+        |> Array.map (fun (i, context) -> (simulation.GetFinals i, context))
+        |> Array.iter (fun (finals, context) -> ResultProcessing.extractAllValidPaths (fun path -> validPaths.Push path) finals context)
+        
+        let mutable counter = 0
+        let decoder = graph.GetDecoder()
+        for result in validPaths do
+            printfn "%s" result
+            
+            let decoded = ResultProcessing.decode result decoder
+            printfn "%s" decoded
+            
+            writer.WriteLine decoded
+            writer.WriteLine ()
+        
+        //-------------------------------
+        
+        Logging.log (sprintf "Results extraction time is %A" (System.DateTime.Now - startTime))
 
+        (*
         let startTime = System.DateTime.Now
         let task, parserCancellation = Parsing.parseAsync (Option.get parser) starts
         Volatile.Write(cancellation, parserCancellation)
@@ -199,6 +240,7 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
             
         Logging.log (sprintf "Decoding time is %A" (System.DateTime.Now - startTime))
         writer.Flush()
+        *)
     
     member this.Start() =
         (*
