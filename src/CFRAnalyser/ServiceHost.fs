@@ -95,6 +95,8 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
     let mutable (currentInput: ControlFlowInput option) = None
     let mutable endToken = -2<token>
     
+    let mutable globalStartTime = System.DateTime.MinValue
+    
     let invalidateParser() =
         parserIsValid <- false
         parser <- None
@@ -124,7 +126,8 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         Logging.log (sprintf "Input generation time is %A" (System.DateTime.Now - startTime))
         checkForInterrupt()
         
-        parser <- Some (new GLLParser(parserSource, input, true))
+        globalStartTime <- System.DateTime.Now
+        parser <- Some (new GLLParser(parserSource, input, false))
         parserIsValid <- true
 
         currentInput <- Some input
@@ -173,8 +176,10 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         let roots = task.Result
         
         Logging.log (sprintf "Parsing time is %A" (System.DateTime.Now - startTime))
+        Logging.log (sprintf "Full time is %A" (System.DateTime.Now - globalStartTime))
         checkForInterrupt()
         
+        (*
         let startTime = System.DateTime.Now
         let results = 
             let temporaryResults = new HashSet<_>()
@@ -198,9 +203,14 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
             writer.WriteLine ()
             
         Logging.log (sprintf "Decoding time is %A" (System.DateTime.Now - startTime))
+        *)
         writer.Flush()
     
     member this.Start() =
+        use reader = new StreamReader ("C:\hackathon\DotnetProducts.Generated.db")
+        graph.Deserialize reader
+
+        performParsing reader (new StreamWriter(@"C:\hackathon\test.txt")) (graph.GetAllFiles() |> Seq.toArray)
         (*
         let testMethod = {methodName = "test"; startNode = 0<local_state>; finalNode = 0<local_state>; inheritedFrom = ""}
         let testEdges = [||]
@@ -233,9 +243,9 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
                 messageType <- "terminate"
                 data <- ""
             
-            printfn "incoming message:"
+            //printfn "incoming message:"
             printfn "%s" messageType
-            printfn "%s" data
+            //printfn "%s" data
             
             try
                 use dataStream = new MemoryStream(System.Text.Encoding.ASCII.GetBytes(data))
@@ -247,7 +257,7 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
                         use reader = new StreamReader (message.sourcePath)
                         graph.Deserialize reader
 
-                        //performParsing reader writer [|"39226c3d-c684-4be1-a13c-d229a4e18615(Psi.CSharp)-90F831B6[.NETFramework,Version=v4.6.1]/d:Src/d:Impl/d:Tree/f:CSharpExpressionBase.cs"|]
+                        //performParsing reader writer (graph.GetAllFiles() |> Seq.toArray)
                         
                     invalidateParser()
                     success <- true
@@ -268,12 +278,14 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
                     invalidateParser()
                     success <- true
                 | "run_analysis" ->
+                    (*
                     if (restoredFrom <> "") then
                         let startTime = System.DateTime.Now
                         use fileStream = new StreamWriter (restoredFrom)
                         graph.Serialize fileStream
                         graph.GetStorage.DumpToDot (@"C:\hackathon\graph.db")
                         Logging.log (sprintf "Database saving time is %A" (System.DateTime.Now - startTime))
+                    *)
                     
                     let message = RunAnalysisMessage.FromJson dataStream
                     performParsing reader writer message.starts

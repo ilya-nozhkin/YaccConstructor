@@ -53,11 +53,17 @@ module ResultProcessing =
                         match node with
                         | :? IntermediateNode as intermediate ->
                             intermediate.MapFirstChild
+                            //intermediate.MapChildren
                         | :? NonTerminalNode as nonterminal ->
                             if intToString.[int nonterminal.Name].[0] = '#'
                             then
                                 skip <- true
-                            nonterminal.MapFirstChild
+                            if intToString.[int nonterminal.Name].[0] = '!'
+                            then
+                                nonterminal.MapChildren
+                            else
+                                //nonterminal.MapChildren
+                                nonterminal.MapFirstChild
                         | _ -> failwith "unexpected SPPF node type"
                     
                     if not skip then
@@ -76,36 +82,49 @@ module ResultProcessing =
                         
                         visited.Remove node |> ignore
                         
+                        let result = 
+                            if result.Count > 5 then
+                                HashSet<string>(Seq.take 5 result)
+                            else
+                                result
+                            
                         Some result
                     else 
                         Some (HashSet<string>())
                 | _ -> failwith "unexpected SPPF node type"
                 
-            if results.IsSome then
-                if results.Value.Count > 10 then
-                    Some (HashSet<string>(Seq.take 10 results.Value))
-                else
-                    results
-            else 
-                None
+            results
                         
         let extractionResults = extractNonCyclicPathsInternal root
         Option.defaultValue (HashSet<string>()) extractionResults
    
     let validate (path: string) = 
         let calls = SortedSet<int>()
+        let returns = SortedSet<int>()
 
-        path.Split ' '
-        |> Array.takeWhile (fun entity -> (entity.StartsWith "C") || (entity.StartsWith "D"))
-        |> Array.forall 
-            (
-                fun entity -> 
-                    if entity.StartsWith "C" then
-                        calls.Add (int (entity.Substring(1))) |> ignore
-                        true
-                    else
-                        calls.Contains (int (entity.Substring(1)))
-            )
+        let firstAcceptance = set ["C"; "RT"; "D"; "RD"]
+        let accept (acceptance: Set<string>) = (Seq.takeWhile (fun c -> c >= 'A' && c <= 'Z') >> String.Concat >> (fun prefix -> acceptance.Contains prefix))
+        
+        let firstCheck = 
+            path.Split ' '
+            |> Array.filter (accept firstAcceptance)
+            |> Array.forall 
+                (
+                    fun entity -> 
+                        if entity.StartsWith "C" then
+                            calls.Add (int (entity.Substring(1))) |> ignore
+                            true
+                        elif entity.StartsWith "D" then
+                            calls.Contains (int (entity.Substring(1)))
+                        elif entity.StartsWith "RT" then
+                            returns.Remove (int (entity.Substring(2))) |> ignore
+                            true
+                        else //if entity.StartsWith "RD" then
+                            returns.Add (int (entity.Substring(2))) |> ignore
+                            true
+                )
+        
+        firstCheck && (returns.Count = 0);
     
     let decode (path: string) (decoder: string -> string) =
         let firstAcceptance = set ["C"; "RT"; "D"; "RD"; "AR"; "AW"]

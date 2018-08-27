@@ -839,6 +839,9 @@ type ControlFlowGraph(storage: IGraphStorage) =
         writer.WriteLine (denseCallIdsProvider.DumpStateToString())
             
         storage.Serialize writer
+    
+    member this.GetAllFiles() = 
+        filesIndex.Pairs() |> Seq.map fst
         
     member this.Deserialize (reader: StreamReader) = 
         let tryReadLine (reader: StreamReader) = 

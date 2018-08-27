@@ -65,7 +65,7 @@ type Context(*<'TokenType>*) =
 
 type ParseData = 
     | TreeNode of int<nodeMeasure>
-    | Length of uint16
+    | Length
 
 [<Struct>]
 [<System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential, Pack = 1)>]
