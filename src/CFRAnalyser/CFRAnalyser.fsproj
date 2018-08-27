@@ -6,6 +6,9 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
     <NoWarn>NU1701</NoWarn>
   </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+    <OutputPath>bin\Release</OutputPath>
+  </PropertyGroup>
   <ItemGroup>
     <None Include="app.config" />
     <Compile Include="AssemblyInfo.fs" />

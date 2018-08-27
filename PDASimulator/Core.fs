@@ -33,12 +33,17 @@ type PDATransition<'State when 'State :> PDAState> =
     }
 
 type GSSNode<'State, 'Edge, 'Node when 'State :> PDAState and 'Edge :> IAbstractInputEdge<'State, 'Edge, 'Node> and 'Node :> IAbstractInputNode<'State, 'Edge, 'Node>> private (data: stack_data, parents: ResizeArray<GSSNode<_,_,_>>) =
-    let subscriptions = new HashSet<Context<'State,'Edge,'Node>>()
+    let subscriptions = new ResizeArray<Context<'State, 'Edge, 'Node>>()
+    let popQueue = new ResizeArray<GSSNode<'State, 'Edge, 'Node>>()
     
     member this.Data = data
-    member this.Pop = parents
+    member this.Pop onlyAdded = if onlyAdded then popQueue else parents
     member this.AddParent (node: GSSNode<'State,'Edge,'Node>) =
-        parents.Add node
+        popQueue.Add node
+   
+    member this.AcceptNewParents() = 
+        parents.AddRange popQueue
+        popQueue.Clear()
     
     member this.Subscribe context =
         subscriptions.Add context |> ignore
@@ -84,8 +89,8 @@ and [<CustomEquality; NoComparison>] Context<'State, 'Edge, 'Node when 'State :>
         state: 'State
         position: 'Node
         
-        parents: IDictionary<Context<'State, 'Edge, 'Node>, 'Edge>
-        children: IDictionary<Context<'State, 'Edge, 'Node>, 'Edge>
+        parents: ResizeArray<ContextInheritanceInfo<'State, 'Edge, 'Node>>
+        children: ResizeArray<ContextInheritanceInfo<'State, 'Edge, 'Node>>
         
         mutable popHistory: (ContextActionType * 'State * 'Edge) option //new state and edge that has been passed
         
@@ -119,26 +124,31 @@ type Simulation<'State, 'Edge, 'Node when 'State :> PDAState and 'Edge :> IAbstr
         {way = way; target = target}
     
     member this.Load (uid: int) (start: 'Node) = 
-        let newContext = 
-            {
-                id = newContextId()
-                top = gssRoot
-                state = pda.StartState
-                position = start
-                parents = new Dictionary<_, _>() 
-                children = new Dictionary<_, _>()
-                popHistory = None
-                survived = false
-                finished = false
-            }
-            
-        loaded.Push (uid, newContext)
-        start.Visit (Helper.pack pda.StartState.Id pda.InitialStackSymbol) newContext
-        newContext
+        let full_state = (Helper.pack pda.StartState.Id pda.InitialStackSymbol)
+        let exists, context = start.AlreadyVisitedBy full_state
+        if not exists then
+            let newContext = 
+                {
+                    id = newContextId()
+                    top = gssRoot
+                    state = pda.StartState
+                    position = start
+                    parents = new ResizeArray<_>()
+                    children = new ResizeArray<_>()
+                    popHistory = None
+                    survived = false
+                    finished = false
+                }
+                
+            loaded.Push (uid, newContext)
+            start.Visit full_state newContext
+            newContext
+        else
+            context
     
     member private this.InheritContext parent child edge =
-        parent.children.[child] <- edge
-        child.parents.[parent] <- edge
+        parent.children.Add (inheritance edge child)
+        child.parents.Add (inheritance edge parent)
         
         if child.survived then
             this.MakeAlive parent
@@ -150,8 +160,8 @@ type Simulation<'State, 'Edge, 'Node when 'State :> PDAState and 'Edge :> IAbstr
                 top = top
                 state = state
                 position = position
-                parents = new Dictionary<_,_>()
-                children = new Dictionary<_,_>()
+                parents = new ResizeArray<_>()
+                children = new ResizeArray<_>()
                 popHistory = None
                 survived = false
                 finished = false
@@ -173,8 +183,8 @@ type Simulation<'State, 'Edge, 'Node when 'State :> PDAState and 'Edge :> IAbstr
                 if not top.survived then
                     top.survived <- true
                     
-                    for pair in top.parents do
-                    survived.Push pair.Key
+                    for inheritance in top.parents do
+                    survived.Push inheritance.target
     
     member private this.ProcessFinal context = 
         context.finished <- true
@@ -194,9 +204,11 @@ type Simulation<'State, 'Edge, 'Node when 'State :> PDAState and 'Edge :> IAbstr
             for subscription in previous.top.Subscriptions do
                 if subscription.popHistory.IsSome then
                     let (contextAction, historyState, historyEdge) = subscription.popHistory.Value
-                    let referencedContexts = this.ProcessPop subscription contextAction historyState historyEdge false
+                    let referencedContexts = this.ProcessPop subscription contextAction historyState historyEdge true 
                     for reference in referencedContexts do
                         if contextAction = Finish then this.ProcessFinal reference
+            
+            previous.top.AcceptNewParents()
             
             previous
         else
@@ -214,14 +226,14 @@ type Simulation<'State, 'Edge, 'Node when 'State :> PDAState and 'Edge :> IAbstr
         else
             this.NewContext context.top newState newPosition full_state context edge
     
-    member private this.ProcessPop (context: Context<'State, 'Edge, 'Node>) (contextAction: ContextActionType) (newState: 'State) (edge: 'Edge) (subscribe: bool) =
+    member private this.ProcessPop (context: Context<'State, 'Edge, 'Node>) (contextAction: ContextActionType) (newState: 'State) (edge: 'Edge) (repop: bool) =
         let newPosition = edge.Target
         
-        if subscribe then
+        if not repop then
             context.top.Subscribe context
             context.popHistory <- Some (contextAction, newState, edge)
             
-        context.top.Pop
+        context.top.Pop repop
         |> ResizeArray.map
             (
                 fun newTop -> 
@@ -245,7 +257,7 @@ type Simulation<'State, 'Edge, 'Node when 'State :> PDAState and 'Edge :> IAbstr
                 this.ProcessSkip context transition.target edge
                 |> fun newContext -> if transition.contextAction = Finish then this.ProcessFinal newContext
             | Pop -> 
-                this.ProcessPop context transition.contextAction transition.target edge true
+                this.ProcessPop context transition.contextAction transition.target edge false 
                 |> ResizeArray.iter (fun newContext -> if transition.contextAction = Finish then this.ProcessFinal newContext)
     
     member private this.Step() = 
@@ -260,11 +272,11 @@ type Simulation<'State, 'Edge, 'Node when 'State :> PDAState and 'Edge :> IAbstr
             let stackSymbol = gssTop.Data
             
             for edge in outgoingEdges do
-            let transition = pda.Step state stackSymbol edge
-            this.ProcessTransition currentContext transition edge
+                let transition = pda.Step state stackSymbol edge
+                this.ProcessTransition currentContext transition edge
     
     member this.GetFinals id =
-        finals.[id]
+        finals.TryGetValue id |> fun (exists, finals) -> if exists then finals else new HashSet<_>()
 
     member this.Run() =
         while loaded.Count > 0 do

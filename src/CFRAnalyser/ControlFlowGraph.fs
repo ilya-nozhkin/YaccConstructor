@@ -450,7 +450,10 @@ type ControlFlowGraph(storage: IGraphStorage) =
     let onEdgeRemovedListener source (label: string) target =
         removeEdgeFromStatistics label
         if label.StartsWith "C" then
-            denseCallIdsProvider.FreeId (int (label.Substring 1))
+            if label.[1] = 'P' then
+                denseCallIdsProvider.FreeId (int (label.Substring 2))
+            else
+                denseCallIdsProvider.FreeId (int (label.Substring 1))
             
     let onEdgeAddedListener source (label: string) target =
         addEdgeToStatistics label
@@ -851,7 +854,10 @@ type ControlFlowGraph(storage: IGraphStorage) =
                     |> Array.collect (fun methodNodeId -> queryReferencedNodes methodNodeId STARTS_FROM)
                     |> Array.map (denseStatesIndex.FindKey >> (fun (exists, id) -> assert exists; int id))
             )
-        
+    
+    member this.GetFiles() =
+        filesIndex.Pairs() |> Seq.map fst
+    
     member this.GetDecoder() = 
         fun key -> decoderInfo.[key]
         

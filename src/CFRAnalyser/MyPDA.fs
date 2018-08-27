@@ -4,7 +4,7 @@ open PDASimulator
 open System.Collections.Generic
 open System
 
-type MyEdgeLabel = Call of int | Return of int | ReadAssert of int | WriteAssert of int | GetLock of int | ReleaseLock of int | Delegate of int | DelegateReturn of int | Invocation | Epsilon | End
+type MyEdgeLabel = PassingCall of int | Call of int | Return of int | ReadAssert of int | WriteAssert of int | GetLock of int | ReleaseLock of int | Delegate of int | DelegateReturn of int | Invocation | Epsilon | End
 
 [<AllowNullLiteral>]
 type MyState(id, stepper: MyEdge -> stack_data -> PDATransition<MyState>) =
@@ -45,6 +45,7 @@ and MyEdge(label: string, target: MyNode) =
     let tokenizedLabel =
         let prefix = label |> Seq.takeWhile (fun c -> c >= 'A' && c <= 'Z') |> String.Concat
         match prefix with
+        | "CP" -> PassingCall (int (label.Substring(2)))
         | "C" -> Call (int (label.Substring(1)))
         | "D" -> Delegate (int (label.Substring(1)))
         | "RT" -> Return (int (label.Substring(2)))
@@ -52,7 +53,7 @@ and MyEdge(label: string, target: MyNode) =
         | "G" -> GetLock (int (label.Substring(1)))
         | "RL" -> ReleaseLock (int (label.Substring(2)))
         | "AR" -> ReadAssert (int (label.Substring(2)))
-        | "AW" -> WriteAssert (int (label.Substring(2)))
+        | "AW" -> Epsilon//WriteAssert (int (label.Substring(2)))
         | "I" -> Invocation
         | "" -> Epsilon
         | "END" -> End
@@ -90,16 +91,16 @@ type MyPDA() =
     let invalidState = null
     let drop = {stackAction = Skip; contextAction = Drop; target = invalidState}
     
-    let locks = 1000000000;
+    let locks     = 1000000000;
     let delegates = 500000000;
-    let calls = 100
+    let calls     = 100
     
     let transition stackAction contextAction target =
         {stackAction = stackAction; contextAction = contextAction; target = target}
     
     let conditional condition stackAction contextAction target = 
         if condition then
-            transition Pop Continue target
+            transition stackAction contextAction target
         else
             drop
     
@@ -109,21 +110,30 @@ type MyPDA() =
     
     and afterAssertState = MyState(2u, processAfterAssertState)
     
-    and underLockState = MyState(3u, processUnderLockState)
-    
     and tailState = MyState(4u, processTailState)
     
-    and underLockState2 = MyState(5u, processUnderLockState)
+    and getAfterDelegateState id = 
+        let rec state = lazy MyState(uint32 (delegates + id), processAfterDelegate (state))
+        state
     
     and processStartState (edge: MyEdge) (stackTop: stack_data) =
-        match edge.Tokenized with
-        | Call id ->       transition (push (calls + id))               Continue startState
-        | Delegate id ->   transition (push (delegates + id)) Continue startState
-        | GetLock id ->    transition (push (locks + id))     Continue underLockState
-        | Invocation ->    transition  Skip                   Continue startState
-        | ReadAssert id -> transition  Skip                   Continue afterAssertState
-        | Epsilon ->       transition  Skip                   Continue startState
-        | _ ->             drop
+        if stackTop < uint32 locks then
+            match edge.Tokenized with
+            | Call id ->        transition (push (calls + id))     Continue startState
+            | PassingCall id -> transition (push (calls + id))     Continue ((getAfterDelegateState id).Value)
+            | GetLock id ->     transition (push (locks + id))     Continue startState
+            | Invocation ->     transition  Skip                   Continue startState
+            | ReadAssert id ->  transition  Skip                   Continue afterAssertState
+            | Epsilon ->        transition  Skip                   Continue startState
+            | _ ->              drop
+        else
+            match edge.Tokenized with
+            | GetLock id ->     transition (push (locks + id))     Continue startState
+            | ReleaseLock id -> conditional (uint32 (id + locks) = stackTop)     Pop Continue startState
+            | ReadAssert id ->  transition Skip Continue startState
+            | Invocation ->     transition Skip Continue startState
+            | Epsilon ->        transition Skip Continue startState
+            | _ -> drop
         
     and processAfterAssertState (edge: MyEdge) (stackTop: stack_data) = 
         if stackTop <> 0u then
@@ -131,48 +141,47 @@ type MyPDA() =
             | Return id ->         conditional (uint32 (id + calls) = stackTop)     Pop Continue afterAssertState
             | DelegateReturn id -> conditional (uint32 (id + delegates) = stackTop) Pop Continue afterAssertState
             | ReadAssert id ->  transition Skip Continue afterAssertState
-            | GetLock id ->     transition Skip Continue underLockState2
+            | GetLock id ->     transition Skip Continue afterAssertState
+            | ReleaseLock id -> transition Skip Continue afterAssertState
             | Invocation ->     transition Skip Continue afterAssertState
             | Epsilon ->        transition Skip Continue afterAssertState
             | _ ->              drop
         else
-            //transition Skip Finish afterAssertState
-            processTailState edge stackTop
+            transition Skip Finish afterAssertState
+            //processTailState edge stackTop
     
     and processTailState (edge: MyEdge) (stackTop: stack_data) =
         match edge.Tokenized with
         | Return id ->         transition Skip Continue tailState
         | DelegateReturn id -> transition Skip Continue tailState
         | ReadAssert id ->     transition Skip Continue tailState
-        | GetLock id ->        transition Skip Continue underLockState2
+        | GetLock id ->        transition Skip Continue tailState
         | Invocation ->        transition Skip Continue tailState
         | Epsilon ->           transition Skip Continue tailState
         | End ->               transition Skip Finish   tailState
         | _ ->                 drop
-            
-    and processUnderLockState (edge: MyEdge) (stackTop: stack_data) = 
-        if stackTop >= uint32 locks then
+    
+    and processAfterDelegate (thisState: Lazy<MyState>) (edge: MyEdge) (stackTop: stack_data) =
+        let thisState = thisState.Value
+        if stackTop < uint32 locks then
             match edge.Tokenized with
-            | ReleaseLock id -> conditional (uint32 (locks + id) = stackTop) Pop Continue underLockState
-            | GetLock id ->   transition (push (locks + id)) Continue underLockState
-            | Invocation ->   transition Skip Continue underLockState
-            | ReadAssert _ -> transition Skip Continue underLockState
-            | Epsilon ->      transition Skip Continue underLockState
-            | _ ->            drop
+                | Call id ->        transition (push (calls + id))     Continue thisState
+                | PassingCall id -> drop
+                | Delegate id ->    conditional (uint32 (delegates + id) = thisState.Id) (push (delegates + id)) Continue startState
+                | GetLock id ->     transition (push (locks + id))     Continue thisState
+                | Invocation ->     transition  Skip                   Continue thisState
+                | ReadAssert id ->  transition  Skip                   Continue afterAssertState
+                | Epsilon ->        transition  Skip                   Continue thisState
+                | _ ->              drop
         else
-            processStartState edge stackTop
-            
-    and processUnderLockState2 (edge: MyEdge) (stackTop: stack_data) = 
-        if stackTop >= uint32 locks then
             match edge.Tokenized with
-            | ReleaseLock id -> conditional (uint32 (locks + id) = stackTop) Pop Continue underLockState2
-            | GetLock id ->   transition (push (locks + id)) Continue underLockState2
-            | Invocation ->   transition Skip Continue underLockState2
-            | ReadAssert _ -> transition Skip Continue underLockState2
-            | Epsilon ->      transition Skip Continue underLockState2
-            | _ ->            drop
-        else
-            processAfterAssertState edge stackTop
+            | GetLock id ->     transition (push (locks + id))     Continue thisState
+            | ReleaseLock id -> conditional (uint32 (id + locks) = stackTop)     Pop Continue thisState 
+            | ReadAssert id ->  transition Skip Continue thisState
+            | Invocation ->     transition Skip Continue thisState
+            | Epsilon ->        transition Skip Continue thisState
+            | _ -> drop
+        
     
     let results = Stack<string>()
     

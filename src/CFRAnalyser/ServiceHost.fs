@@ -188,7 +188,7 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         startContexts 
         |> Array.filter (fun (i, context) -> context.survived)
         |> Array.map (fun (i, context) -> (simulation.GetFinals i, context))
-        |> Array.iter (fun (finals, context) -> ResultProcessing.extractAllValidPaths (fun path -> validPaths.Push path) finals context)
+        |> Array.iter (fun (finals, context) -> ResultProcessing.extractAllValidPaths (fun path -> printfn "%s" path; validPaths.Push path) finals context)
         
         let mutable counter = 0
         let decoder = graph.GetDecoder()
@@ -243,6 +243,13 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         *)
     
     member this.Start() =
+    (*
+        use reader = new StreamReader (@"C:\hackathon\asdf.Generated.db")
+        graph.Deserialize reader
+
+        performParsing reader (new StreamWriter(@"C:\hackathon\test.txt")) (graph.GetFiles() |> Seq.toArray)
+        *)
+    
         (*
         let testMethod = {methodName = "test"; startNode = 0<local_state>; finalNode = 0<local_state>; inheritedFrom = ""}
         let testEdges = [||]
@@ -275,9 +282,9 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
                 messageType <- "terminate"
                 data <- ""
             
-            printfn "incoming message:"
-            printfn "%s" messageType
-            printfn "%s" data
+            //printfn "incoming message:"
+            printfn "incoming message: %s" messageType
+            //printfn "%s" data
             
             try
                 use dataStream = new MemoryStream(System.Text.Encoding.ASCII.GetBytes(data))
