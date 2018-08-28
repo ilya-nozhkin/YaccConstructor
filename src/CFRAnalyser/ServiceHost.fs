@@ -1,5 +1,16 @@
 namespace CfrAnalyser 
 
+open AbstractAnalysis.Common
+open System
+open System.Collections.Generic
+open System.Diagnostics
+
+open System.Collections.Generic
+open System.Diagnostics
+open System.IO
+open QuickGraph
+open System.Runtime.Serialization
+open System.Runtime.CompilerServices
 open System.IO
 open System.Net
 open System.Net.Sockets
@@ -96,16 +107,20 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
     let mutable endToken = -2<token>
     
     let mutable globalStartTime = System.DateTime.MinValue
+    let mutable weakEdgesHandler: IDisposable option = None
     
     let invalidateParser() =
         parserIsValid <- false
         parser <- None
+        if weakEdgesHandler.IsSome then
+            weakEdgesHandler.Value.Dispose()
+            weakEdgesHandler <- None
     
     let prepareForParsing (checkForInterrupt: unit -> unit) =
         checkForInterrupt()
 
         let startTime = System.DateTime.Now
-        use disposableEdges = graph.GenerateWeakEdges()
+        weakEdgesHandler <- Some (graph.GenerateWeakEdges())
         Logging.log (sprintf "Weak edges generation time is %A" (System.DateTime.Now - startTime))
         checkForInterrupt()
         
@@ -127,7 +142,7 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         checkForInterrupt()
         
         globalStartTime <- System.DateTime.Now
-        parser <- Some (new GLLParser(parserSource, input, false))
+        parser <- Some (new GLLParser(parserSource, input, true))
         parserIsValid <- true
 
         currentInput <- Some input
@@ -179,11 +194,11 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         Logging.log (sprintf "Full time is %A" (System.DateTime.Now - globalStartTime))
         checkForInterrupt()
         
-        (*
         let startTime = System.DateTime.Now
         let results = 
             let temporaryResults = new HashSet<_>()
             roots
+            |> Array.take 5
             |> Array.map (fun x -> ResultProcessing.extractNonCyclicPath x (parser.Value.Source.IntToString) checkForInterrupt)
             |> Array.iter (fun s -> temporaryResults.UnionWith s)
             temporaryResults
@@ -203,14 +218,15 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
             writer.WriteLine ()
             
         Logging.log (sprintf "Decoding time is %A" (System.DateTime.Now - startTime))
-        *)
         writer.Flush()
     
     member this.Start() =
+        (*
         use reader = new StreamReader ("C:\hackathon\DotnetProducts.Generated.db")
         graph.Deserialize reader
 
         performParsing reader (new StreamWriter(@"C:\hackathon\test.txt")) (graph.GetAllFiles() |> Seq.toArray)
+        *)
         (*
         let testMethod = {methodName = "test"; startNode = 0<local_state>; finalNode = 0<local_state>; inheritedFrom = ""}
         let testEdges = [||]

@@ -96,6 +96,7 @@ module ResultProcessing =
             results
                         
         let extractionResults = extractNonCyclicPathsInternal root
+        printfn "%s" (if extractionResults.IsSome && extractionResults.Value.Count > 0 then Seq.head extractionResults.Value else "" )
         Option.defaultValue (HashSet<string>()) extractionResults
    
     let validate (path: string) = 

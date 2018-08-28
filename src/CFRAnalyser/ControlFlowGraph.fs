@@ -6,6 +6,7 @@ open System.Collections.Generic
 open System.Diagnostics
 
 open System.Collections.Generic
+open System.Diagnostics
 open System.IO
 open QuickGraph
 open System.Runtime.Serialization
@@ -823,6 +824,7 @@ type ControlFlowGraph(storage: IGraphStorage) =
                 fun fileNodeId ->
                     queryReferencedNodes fileNodeId CONTAINS 
                     |> Array.collect (fun methodNodeId -> queryReferencedNodes methodNodeId STARTS_FROM)
+                    |> Array.filter (fun methodNodeId -> storage.IncomingEdges methodNodeId |> Array.forall (fun (label, _) -> label = OWNS || label = STARTS_FROM))
                     |> Array.map (denseStatesIndex.FindKey >> (fun (exists, id) -> assert exists; int id))
             )
         
