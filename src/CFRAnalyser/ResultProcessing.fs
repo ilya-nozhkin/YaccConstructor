@@ -98,8 +98,15 @@ module ResultProcessing =
         let extractionResults = extractNonCyclicPathsInternal root
         Option.defaultValue (HashSet<string>()) extractionResults
     
+    (*
     type UndoToken = AddCall of int | AddReturn of int | RemoveReturn of int | UnUndoable
+    type Validator(pda: IPDA<MyState, MyEdge, MyNode>) = 
+        let stack = new Stack<stack_data>()
+        let currentState = pda.
         
+        let processTransition (transition: PDATransition
+        *)
+    (* 
     type Validator() = 
         let calls = SortedSet<int>()
         let returns = SortedSet<int>()
@@ -143,11 +150,15 @@ module ResultProcessing =
             | AddReturn id -> returns.Remove id |> ignore
             | RemoveReturn id -> returns.Add id |> ignore
             | UnUndoable -> ()
+     *)
+     
     
     let extractAllValidPaths (onFound: string -> unit) (finals: HashSet<Context<MyState, MyEdge, MyNode>>) (rootContext: Context<MyState, MyEdge, MyNode>) = 
         let pathsRoot = List.empty
         let visited = new HashSet<Context<MyState, MyEdge, MyNode>>()
-        let validator = new Validator()
+        let pda = new MyPDA()
+        
+        printfn "%i" rootContext.owner
         
         //printfn "%s" (List.rev listPointer |> String.concat " ")
         
@@ -159,11 +170,11 @@ module ResultProcessing =
                 //printfn "%s" (List.rev listPointer |> String.concat " ")
         
                 for inheritance in context.children do
-                    if inheritance.target.survived then
+                    if inheritance.target.survived && inheritance.target.owner >= context.owner then
                         let label = inheritance.way.Label
                         //let success, token = validator.Eat label
                         
-                        if true then//success then
+                        if true then//visited.Count < 1000 then//success then
                             internalExtract inheritance.target (label :: listPointer)
                             if inheritance.target.survived then
                                 survived <- true

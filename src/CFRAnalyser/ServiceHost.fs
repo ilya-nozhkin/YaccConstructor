@@ -187,6 +187,7 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         let validPaths = Stack<string>() 
         startContexts 
         |> Array.filter (fun (i, context) -> context.survived)
+        |> Array.rev
         |> Array.map (fun (i, context) -> (simulation.GetFinals i, context))
         |> Array.iter (fun (finals, context) -> ResultProcessing.extractAllValidPaths (fun path -> printfn "%s" path; validPaths.Push path) finals context)
         
@@ -243,12 +244,10 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         *)
     
     member this.Start() =
-    (*
-        use reader = new StreamReader (@"C:\hackathon\asdf.Generated.db")
+        use reader = new StreamReader (@"C:\hackathon\DotnetProducts.Generated.db")
         graph.Deserialize reader
 
         performParsing reader (new StreamWriter(@"C:\hackathon\test.txt")) (graph.GetFiles() |> Seq.toArray)
-        *)
     
         (*
         let testMethod = {methodName = "test"; startNode = 0<local_state>; finalNode = 0<local_state>; inheritedFrom = ""}
@@ -317,12 +316,14 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
                     invalidateParser()
                     success <- true
                 | "run_analysis" ->
+                    (*
                     if (restoredFrom <> "") then
                         let startTime = System.DateTime.Now
                         use fileStream = new StreamWriter (restoredFrom)
                         graph.Serialize fileStream
                         graph.GetStorage.DumpToDot (@"C:\hackathon\graph.db")
                         Logging.log (sprintf "Database saving time is %A" (System.DateTime.Now - startTime))
+                        *)
                     
                     let message = RunAnalysisMessage.FromJson dataStream
                     performParsing reader writer message.starts

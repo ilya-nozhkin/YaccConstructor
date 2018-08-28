@@ -62,6 +62,9 @@ and MyEdge(label: string, target: MyNode) =
     member this.Tokenized = tokenizedLabel
     
     member this.Label = label 
+   
+    override this.ToString() =
+        label
         
     interface IAbstractInputEdge<MyState, MyEdge, MyNode> with
         member this.Target = target
@@ -120,7 +123,7 @@ type MyPDA() =
         if stackTop < uint32 locks then
             match edge.Tokenized with
             | Call id ->        transition (push (calls + id))     Continue startState
-            | PassingCall id -> transition (push (calls + id))     Continue ((getAfterDelegateState id).Value)
+            | PassingCall id -> transition (push (calls + id))     Continue startState//((getAfterDelegateState id).Value)
             | GetLock id ->     transition (push (locks + id))     Continue startState
             | Invocation ->     transition  Skip                   Continue startState
             | ReadAssert id ->  transition  Skip                   Continue afterAssertState
@@ -147,7 +150,7 @@ type MyPDA() =
             | Epsilon ->        transition Skip Continue afterAssertState
             | _ ->              drop
         else
-            transition Skip Finish afterAssertState
+            transition Skip Finish tailState
             //processTailState edge stackTop
     
     and processTailState (edge: MyEdge) (stackTop: stack_data) =
@@ -165,7 +168,7 @@ type MyPDA() =
         let thisState = thisState.Value
         if stackTop < uint32 locks then
             match edge.Tokenized with
-                | Call id ->        transition (push (calls + id))     Continue thisState
+                | Call id ->        drop//transition (push (calls + id))     Continue thisState
                 | PassingCall id -> drop
                 | Delegate id ->    conditional (uint32 (delegates + id) = thisState.Id) (push (delegates + id)) Continue startState
                 | GetLock id ->     transition (push (locks + id))     Continue thisState

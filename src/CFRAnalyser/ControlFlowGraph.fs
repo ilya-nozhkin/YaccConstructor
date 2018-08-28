@@ -852,6 +852,7 @@ type ControlFlowGraph(storage: IGraphStorage) =
                 fun fileNodeId ->
                     queryReferencedNodes fileNodeId CONTAINS 
                     |> Array.collect (fun methodNodeId -> queryReferencedNodes methodNodeId STARTS_FROM)
+                    |> Array.filter (fun methodNodeId -> storage.IncomingEdges methodNodeId |> Array.forall (fun (label, _) -> label = OWNS || label = STARTS_FROM || label = FINISHES_AT))
                     |> Array.map (denseStatesIndex.FindKey >> (fun (exists, id) -> assert exists; int id))
             )
     
