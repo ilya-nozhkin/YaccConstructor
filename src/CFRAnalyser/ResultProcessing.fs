@@ -154,6 +154,7 @@ module ResultProcessing =
      
     
     let extractAllValidPaths (onFound: string -> unit) (finals: HashSet<Context<MyState, MyEdge, MyNode>>) (rootContext: Context<MyState, MyEdge, MyNode>) = 
+        (*
         let pathsRoot = List.empty
         let visited = new HashSet<Context<MyState, MyEdge, MyNode>>()
         let pda = new MyPDA()
@@ -191,8 +192,9 @@ module ResultProcessing =
             
                 visited.Remove context |> ignore
         
+        *)
         try
-            internalExtract rootContext pathsRoot
+            ()//internalExtract rootContext pathsRoot
         with e -> ()
             
     let decode (path: string) (decoder: string -> string) =

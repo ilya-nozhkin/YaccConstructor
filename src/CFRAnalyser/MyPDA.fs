@@ -18,6 +18,9 @@ and MyNode(id: int, getOutgoingEdges: int -> MyEdge seq) =
     
     member this.Id = id
     
+    override this.ToString() =
+        id.ToString()
+    
     override this.Equals obj = 
         (obj :?> MyNode).Id = id
         

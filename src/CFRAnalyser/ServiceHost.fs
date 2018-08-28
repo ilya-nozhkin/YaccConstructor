@@ -186,7 +186,7 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         
         let validPaths = Stack<string>() 
         startContexts 
-        |> Array.filter (fun (i, context) -> context.survived)
+        |> Array.filter (fun (i, context) -> false)//context.survived)
         |> Array.rev
         |> Array.map (fun (i, context) -> (simulation.GetFinals i, context))
         |> Array.iter (fun (finals, context) -> ResultProcessing.extractAllValidPaths (fun path -> printfn "%s" path; validPaths.Push path) finals context)
@@ -244,10 +244,12 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         *)
     
     member this.Start() =
+    (*
         use reader = new StreamReader (@"C:\hackathon\DotnetProducts.Generated.db")
         graph.Deserialize reader
 
         performParsing reader (new StreamWriter(@"C:\hackathon\test.txt")) (graph.GetFiles() |> Seq.toArray)
+        *)
     
         (*
         let testMethod = {methodName = "test"; startNode = 0<local_state>; finalNode = 0<local_state>; inheritedFrom = ""}
