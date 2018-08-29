@@ -451,7 +451,10 @@ type ControlFlowGraph(storage: IGraphStorage) =
     let onEdgeRemovedListener source (label: string) target =
         removeEdgeFromStatistics label
         if label.StartsWith "C" then
-            denseCallIdsProvider.FreeId (int (label.Substring 1))
+            if label.[1] = 'P' then
+                denseCallIdsProvider.FreeId (int (label.Substring 2))
+            else
+                denseCallIdsProvider.FreeId (int (label.Substring 1))
             
     let onEdgeAddedListener source (label: string) target =
         addEdgeToStatistics label
@@ -812,6 +815,32 @@ type ControlFlowGraph(storage: IGraphStorage) =
         
         ControlFlowInput (Array.empty, dynamicIndex)
     
+    member this.ConstructDynamicIndex() = 
+        let statistics = this.GetStatistics()
+        let dynamicIndex = Array.zeroCreate (statistics.nodes)
+        let endToken = "END"
+        
+        for i in [0 .. statistics.nodes - 1] do
+            let exists, nodeId = denseStatesIndex.FindNode (i * 1<state>)
+            if exists then
+                dynamicIndex.[i] <- 
+                    storage.OutgoingEdges nodeId
+                    |> fun edges -> 
+                        if edges.Length > 0 then 
+                            Array.map (
+                                fun (label, target) ->
+                                    let exists, newTarget = denseStatesIndex.FindKey target
+                                    assert exists
+                                    
+                                    let newTarget = int newTarget
+                                    
+                                    (label, newTarget)
+                            ) edges
+                        else
+                            [|endToken, i|]
+        
+        dynamicIndex
+    
     member this.GetStartsForFiles (files: string []) =
         let fileNodes = 
             files
@@ -824,10 +853,13 @@ type ControlFlowGraph(storage: IGraphStorage) =
                 fun fileNodeId ->
                     queryReferencedNodes fileNodeId CONTAINS 
                     |> Array.collect (fun methodNodeId -> queryReferencedNodes methodNodeId STARTS_FROM)
-                    |> Array.filter (fun methodNodeId -> storage.IncomingEdges methodNodeId |> Array.forall (fun (label, _) -> label = OWNS || label = STARTS_FROM))
+//                    |> Array.filter (fun methodNodeId -> storage.IncomingEdges methodNodeId |> Array.forall (fun (label, _) -> label = OWNS || label = STARTS_FROM))
                     |> Array.map (denseStatesIndex.FindKey >> (fun (exists, id) -> assert exists; int id))
             )
-        
+    
+    member this.GetFiles() =
+        filesIndex.Pairs() |> Seq.map fst
+    
     member this.GetDecoder() = 
         fun key -> decoderInfo.[key]
         

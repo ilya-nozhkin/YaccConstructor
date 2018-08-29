@@ -23,9 +23,8 @@ open System.Threading
 open CfrAnalyser.Graph
 
 open AbstractAnalysis.Common
-open FSharpx.Collections.Experimental.BootstrappedQueue
-open FSharpx.Collections.Experimental.BootstrappedQueue
-open FSharpx.Collections.Experimental.BootstrappedQueue
+open CfrAnalyser.PDA
+open PDASimulator
 open Yard.Generators.GLL.AbstractParser
 
 [<DataContract>]
@@ -123,6 +122,8 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         weakEdgesHandler <- Some (graph.GenerateWeakEdges())
         Logging.log (sprintf "Weak edges generation time is %A" (System.DateTime.Now - startTime))
         checkForInterrupt()
+       
+        graph.ConstructDynamicIndex()
         
         let startTime = System.DateTime.Now
         use statesWriter = new StreamWriter(@"C:\hackathon\states.graph")
@@ -169,9 +170,11 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         
         if asyncCanceller.Status = TaskStatus.Created then
             asyncCanceller.Start()
-            
+        
         if not parserIsValid then
             prepareForParsing checkForInterrupt
+        
+        //let dynamicIndex = prepareForParsing checkForInterrupt
         
         checkForInterrupt()
         
@@ -181,7 +184,42 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         for start in starts do
             currentInput.Value.RemoveCyclesForStart (int start) endToken
         *)
-        Logging.log (sprintf "Starts extraction time is %A" (System.DateTime.Now - startTime))
+        
+        //-------------------------------
+        
+        (*
+        let pda = new MyPDA()
+        let simulation = Simulation(pda)
+        
+        let myGraph = MyGraph(dynamicIndex)
+        
+        let startContexts = starts |> Array.mapi (fun i start -> (i, start |> myGraph.GetNode |> simulation.Load i))
+        simulation.Run()
+        
+        Logging.log (sprintf "Simulation time is %A" (System.DateTime.Now - startTime))
+        let startTime = System.DateTime.Now
+        
+        let validPaths = Stack<string>() 
+        startContexts 
+        |> Array.filter (fun (i, context) -> false)//context.survived)
+        |> Array.rev
+        |> Array.map (fun (i, context) -> (simulation.GetFinals i, context))
+        |> Array.iter (fun (finals, context) -> ResultProcessing.extractAllValidPaths (fun path -> printfn "%s" path; validPaths.Push path) finals context)
+        
+        let mutable counter = 0
+        let decoder = graph.GetDecoder()
+        for result in validPaths do
+            printfn "%s" result
+            
+            let decoded = ResultProcessing.decode result decoder
+            printfn "%s" decoded
+            
+            writer.WriteLine decoded
+            writer.WriteLine ()
+        *)
+        //-------------------------------
+        
+        Logging.log (sprintf "Results extraction time is %A" (System.DateTime.Now - startTime))
 
         let startTime = System.DateTime.Now
         let task, parserCancellation = Parsing.parseAsync (Option.get parser) starts
@@ -198,7 +236,6 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         let results = 
             let temporaryResults = new HashSet<_>()
             roots
-            |> Array.take 5
             |> Array.map (fun x -> ResultProcessing.extractNonCyclicPath x (parser.Value.Source.IntToString) checkForInterrupt)
             |> Array.iter (fun s -> temporaryResults.UnionWith s)
             temporaryResults
@@ -208,7 +245,7 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         
         let startTime = System.DateTime.Now
         let decoder = graph.GetDecoder()
-        for result in (results |> Seq.filter ResultProcessing.validate) do
+        for result in results do
             printfn "%s" result
             
             let decoded = ResultProcessing.decode result decoder
@@ -221,6 +258,13 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         writer.Flush()
     
     member this.Start() =
+    (*
+        use reader = new StreamReader (@"C:\hackathon\DotnetProducts.Generated.db")
+        graph.Deserialize reader
+
+        performParsing reader (new StreamWriter(@"C:\hackathon\test.txt")) (graph.GetFiles() |> Seq.toArray)
+        *)
+    
         (*
         use reader = new StreamReader ("C:\hackathon\DotnetProducts.Generated.db")
         graph.Deserialize reader
@@ -259,9 +303,9 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
                 messageType <- "terminate"
                 data <- ""
             
-            //printfn "incoming message:"
+            printfn "incoming message:"
             printfn "%s" messageType
-            //printfn "%s" data
+            printfn "%s" data
             
             try
                 use dataStream = new MemoryStream(System.Text.Encoding.ASCII.GetBytes(data))
@@ -294,14 +338,12 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
                     invalidateParser()
                     success <- true
                 | "run_analysis" ->
-                    (*
                     if (restoredFrom <> "") then
                         let startTime = System.DateTime.Now
                         use fileStream = new StreamWriter (restoredFrom)
                         graph.Serialize fileStream
                         graph.GetStorage.DumpToDot (@"C:\hackathon\graph.db")
                         Logging.log (sprintf "Database saving time is %A" (System.DateTime.Now - startTime))
-                    *)
                     
                     let message = RunAnalysisMessage.FromJson dataStream
                     performParsing reader writer message.starts

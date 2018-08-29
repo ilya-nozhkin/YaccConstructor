@@ -55,20 +55,22 @@ type ControlFlowGraphBuilder(graph: ControlFlowGraph) =
             let id = graph.GetFreeStateId()
             localToGlobalMap.Add (local, id)
             id
-    
+
     let processParameter (owner: string) (target: string) (callId: int) (parameter: PassedParameter) =
         if parameter.parameter <> -1 then
             graph.GetOrCreateDelegateParameter owner parameter.parameter |> ignore
             graph.AddDelegateParameterPassing owner parameter.parameter target parameter.id |> ignore
+            false
         else 
             assert (parameter.method.Length > 0)
             graph.AddDelegateInstancePassing owner parameter.method target parameter.id callId
-    
+            true
+
     let processCallInfo (owner: string) (callInfo: CallInfo) (source: int<state>) (target: int<state>) =
         if callInfo.calledParameter <> -1 then
             queuedActions.Enqueue (fun () ->
                 graph.AddSubstitution owner callInfo.calledParameter source target callInfo.decoderInfo |> assertTrue)
-                
+            
             [||]
         else
             let targetStart, targetFinal = graph.GetOrCreateMethodBoundStates callInfo.target
@@ -76,9 +78,9 @@ type ControlFlowGraphBuilder(graph: ControlFlowGraph) =
             let newEdge = {startNode = source; label = "I"; endNode = target}
             let callId = graph.GetFreeCallId()
             
-            callInfo.passedParameters |> Array.iter (processParameter owner callInfo.target callId)
+            let instancePassing = callInfo.passedParameters |> Array.exists (processParameter owner callInfo.target callId)
             
-            let callLabel = "C" + callId.ToString()
+            let callLabel = (if instancePassing then "CP" else "C") + callId.ToString()
             let returnLabel = "RT" + callId.ToString()
             
             let modifiedDecoderInfo = callInfo.decoderInfo + " " + callInfo.target
@@ -104,7 +106,7 @@ type ControlFlowGraphBuilder(graph: ControlFlowGraph) =
             let label = if exists then globalized else edge.label
             let newEdge = {startNode = source; label = label; endNode = target}
             ([|newEdge|])
-        
+    
     member this.UpdateMethod (method: Method) (edges: RawEdge []) (callInfos: CallInfo []) =
         queuedCallInfos.Clear()
         callInfos |> Array.iter (fun info -> queuedCallInfos.Add (info.callId, info))
@@ -133,7 +135,7 @@ type ControlFlowGraphBuilder(graph: ControlFlowGraph) =
         
         method.inheritedFrom
         |> Array.iter (fun basic -> graph.AddInheritance basic method.methodName)
-        
+    
     member this.UpdateFileInfo (fileName: string) (newMethods: Set<string>) =
         graph.UpdateFileInfo fileName newMethods
     

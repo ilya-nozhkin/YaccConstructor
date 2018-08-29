@@ -3,8 +3,14 @@
 open Yard.Generators.Common.ASTGLLFSA
 open AbstractAnalysis.Common
 open System.Collections.Generic
+open PDASimulator
+open CfrAnalyser.PDA
 
 module ResultProcessing =
+    open System.ComponentModel
+
+    open System.Runtime.InteropServices
+
     open System
     open System.IO
     open Yard.Generators.Common.AstNode
@@ -98,8 +104,17 @@ module ResultProcessing =
         let extractionResults = extractNonCyclicPathsInternal root
         printfn "%s" (if extractionResults.IsSome && extractionResults.Value.Count > 0 then Seq.head extractionResults.Value else "" )
         Option.defaultValue (HashSet<string>()) extractionResults
-   
-    let validate (path: string) = 
+    
+    (*
+    type UndoToken = AddCall of int | AddReturn of int | RemoveReturn of int | UnUndoable
+    type Validator(pda: IPDA<MyState, MyEdge, MyNode>) = 
+        let stack = new Stack<stack_data>()
+        let currentState = pda.
+        
+        let processTransition (transition: PDATransition
+        *)
+    (* 
+    type Validator1() = 
         let calls = SortedSet<int>()
         let returns = SortedSet<int>()
 
@@ -126,11 +141,105 @@ module ResultProcessing =
                 )
         
         firstCheck && (returns.Count = 0);
+        
+    type Validator2() = 
+        let calls = SortedSet<int>()
+        let returns = SortedSet<int>()
+        
+        member this.AddCall id = 
+            calls.Add id |> ignore
+            AddCall id
+            
+        member this.AddReturn id = 
+            returns.Add id |> ignore
+            AddReturn id
+        
+        member this.ContainsCall id = 
+            calls.Contains id
+        
+        member this.RemoveReturn id =
+            if returns.Remove id then
+                RemoveReturn id
+            else
+                UnUndoable
+            
+        member this.Eat (entity: string) = 
+            if entity.StartsWith "C" then
+                let id = int (entity.Substring 1)
+                (true, this.AddCall id)
+            elif entity.StartsWith "D" then
+                let id = int (entity.Substring 1)
+                (this.ContainsCall id, UnUndoable)
+            elif entity.StartsWith "RT" then
+                let id = int (entity.Substring 1)
+                (true, this.RemoveReturn id)
+            elif entity.StartsWith "RD" then
+                let id = int (entity.Substring 1)
+                (true, this.AddReturn id)
+            else
+                (true, UnUndoable)
+        
+        member this.Undo (token: UndoToken) = 
+            match token with
+            | AddCall id -> calls.Remove id |> ignore
+            | AddReturn id -> returns.Remove id |> ignore
+            | RemoveReturn id -> returns.Add id |> ignore
+            | UnUndoable -> ()
+     *)
     
+    let extractAllValidPaths (onFound: string -> unit) (finals: HashSet<Context<MyState, MyEdge, MyNode>>) (rootContext: Context<MyState, MyEdge, MyNode>) = 
+        (*
+        let pathsRoot = List.empty
+        let visited = new HashSet<Context<MyState, MyEdge, MyNode>>()
+        let pda = new MyPDA()
+        
+        printfn "%i" rootContext.owner
+        
+        //printfn "%s" (List.rev listPointer |> String.concat " ")
+        
+        let rec internalExtract (context: Context<MyState, MyEdge, MyNode>) listPointer = 
+            if not (visited.Contains context) then
+                visited.Add context |> ignore
+                let mutable survived = true
+                
+                //printfn "%s" (List.rev listPointer |> String.concat " ")
+        
+                for inheritance in context.children do
+                    if inheritance.target.survived && inheritance.target.owner >= context.owner then
+                        let label = inheritance.way.Label
+                        //let success, token = validator.Eat label
+                        
+                        if true then//visited.Count < 1000 then//success then
+                            internalExtract inheritance.target (label :: listPointer)
+                            if inheritance.target.survived then
+                                survived <- true
+                
+                        //validator.Undo token
+                        
+                if finals.Contains context then
+                    let result = listPointer |> List.toArray |> Array.rev
+                    onFound (String.concat " " result)
+                    raise (Exception(""))
+                    survived <- true
+                
+                context.survived <- survived
+            
+                visited.Remove context |> ignore
+        
+        *)
+        try
+            ()//internalExtract rootContext pathsRoot
+        with e -> ()
+            
     let decode (path: string) (decoder: string -> string) =
-        let firstAcceptance = set ["C"; "RT"; "D"; "RD"; "AR"; "AW"]
+        let firstAcceptance = set ["CP"; "C"; "RT"; "D"; "RD"; "AR"; "AW"]
+        (*
         let secondAcceptance = set ["RT"; "RD"; "AR"; "AW"]
         let transformation = dict [("RT", "C"); ("RD", "D"); ("AR", "AR"); ("AW", "AW")]
+        *)
+        let secondAcceptance = set ["C"; "CP"; "D"; "AR"; "AW"]
+        let transformation = dict [("C", "C"); ("CP", "CP"); ("D", "D"); ("AR", "AR"); ("AW", "AW")]
+        
         let accept (acceptance: Set<string>) = (Seq.takeWhile (fun c -> c >= 'A' && c <= 'Z') >> String.Concat >> (fun prefix -> acceptance.Contains prefix))
         let entities = path.Split ' ' |> Array.filter (accept firstAcceptance)
         let first = entities.[0]
@@ -145,6 +254,6 @@ module ResultProcessing =
             )
         |> Array.map (fun entity -> (entity = first, entity))
         |> Array.map (fun (isFirst, entity) -> (if isFirst then "*" else "") + (decoder entity))
-        |> Array.rev
+        //|> Array.rev
         |> String.concat "\n"
         

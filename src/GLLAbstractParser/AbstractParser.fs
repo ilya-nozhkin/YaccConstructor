@@ -48,7 +48,7 @@ type GLLParser(parser : ParserSourceGLL, input : IParserInput, buildTree : bool)
 
     /// Adds new context to stack (setR) if it is first occurrence of this context (if SetU doesn't contain it).
     let addContext posInInput posInGrammar (gssVertex:GSSVertex) data =
-        if not <| gssVertex.ContainsContext posInInput posInGrammar data
+        if not <| gssVertex.ContainsContext posInInput posInGrammar data buildTree
         then pushContext posInInput posInGrammar gssVertex data
     
     //let mutable counter = 0
