@@ -124,11 +124,11 @@ type ControlFlowGraphBuilder(graph: ControlFlowGraph) =
         
         let globalizedEdges = 
             if edges.Length = 0 then
-                [|{startNode = startState; label = "e"; endNode = finalState}|]
+                ()//[|{startNode = startState; label = "e"; endNode = finalState}|]
             else
-                edges |> Array.collect (globalizeEdge method.methodName)
+                let globalizedEdges = edges |> Array.collect (globalizeEdge method.methodName)
+                graph.FillMethod method.methodName globalizedEdges
         
-        graph.FillMethod method.methodName globalizedEdges
         
         while queuedActions.Count > 0 do
             (queuedActions.Dequeue())()
