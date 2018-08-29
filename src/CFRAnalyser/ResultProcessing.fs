@@ -233,12 +233,14 @@ module ResultProcessing =
             
     let decode (path: string) (decoder: string -> string) =
         let firstAcceptance = set ["CP"; "C"; "RT"; "D"; "RD"; "AR"; "AW"]
-        (*
         let secondAcceptance = set ["RT"; "RD"; "AR"; "AW"]
         let transformation = dict [("RT", "C"); ("RD", "D"); ("AR", "AR"); ("AW", "AW")]
-        *)
+        (*
         let secondAcceptance = set ["C"; "CP"; "D"; "AR"; "AW"]
         let transformation = dict [("C", "C"); ("CP", "CP"); ("D", "D"); ("AR", "AR"); ("AW", "AW")]
+        *)
+        
+        let delegates = new SortedSet<int>()
         
         let accept (acceptance: Set<string>) = (Seq.takeWhile (fun c -> c >= 'A' && c <= 'Z') >> String.Concat >> (fun prefix -> acceptance.Contains prefix))
         let entities = path.Split ' ' |> Array.filter (accept firstAcceptance)
@@ -250,10 +252,17 @@ module ResultProcessing =
                 fun entity -> 
                     let prefix = entity |> Seq.takeWhile (fun c -> c >= 'A' && c <= 'Z') |> String.Concat
                     let index = entity.Substring (prefix.Length)
-                    transformation.[prefix] + index
+                    
+                    if prefix = "RD" then
+                        delegates.Add (int index) |> ignore
+                    
+                    if prefix = "RT" && delegates.Contains (int index) then
+                        "CP" + index
+                    else
+                        transformation.[prefix] + index
             )
         |> Array.map (fun entity -> (entity = first, entity))
         |> Array.map (fun (isFirst, entity) -> (if isFirst then "*" else "") + (decoder entity))
-        //|> Array.rev
+        |> Array.rev
         |> String.concat "\n"
         

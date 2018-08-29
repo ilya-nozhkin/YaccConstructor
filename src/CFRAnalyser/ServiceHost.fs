@@ -259,7 +259,7 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
     
     member this.Start() =
     (*
-        use reader = new StreamReader (@"C:\hackathon\DotnetProducts.Generated.db")
+        use reader = new StreamReader (@"C:\hackathon\asdf.Generated.db")
         graph.Deserialize reader
 
         performParsing reader (new StreamWriter(@"C:\hackathon\test.txt")) (graph.GetFiles() |> Seq.toArray)

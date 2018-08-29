@@ -265,6 +265,7 @@ type ControlFlowGraph(storage: IGraphStorage) =
     let INSTANTIATED_WITH = "instance"
     let PASSED_TO = "pass"
     let SUBSTITUTES_TO = "substitute"
+    let INHERITED_BY = "inherited"
     let INVALID_NODE_ID = -1
     
     let CALL id = "C" + id.ToString()
@@ -393,6 +394,12 @@ type ControlFlowGraph(storage: IGraphStorage) =
             clearMethod identifier
         
             queryReferencedNodes nodeId OWNS
+            |> Array.iter (storage.RemoveNode >> assertTrue)
+            
+            queryReferencedNodes nodeId INITIATES_PASSING
+            |> Array.iter (storage.RemoveNode >> assertTrue)
+            
+            queryReferencedNodes nodeId HAS_PARAMETER
             |> Array.iter (storage.RemoveNode >> assertTrue)
             
             storage.RemoveNode nodeId |> assertTrue
@@ -571,6 +578,15 @@ type ControlFlowGraph(storage: IGraphStorage) =
         storage.AddEdge basicStart "e" inheritorStart |> assertTrue
         storage.AddEdge inheritorFinal "e" basicFinal |> assertTrue
         
+        let exists, basicNode = methodsIndex.FindNode basicMethod
+        assert exists
+        
+        let exists, inheritorNode = methodsIndex.FindNode inheritor
+        assert exists
+        
+        storage.AddEdge basicNode INHERITED_BY inheritorNode |> assertTrue
+        this.PullAllPassingsFromBasicMethod basicMethod inheritor
+        
     member this.UpdateFileInfo (fileName: string) (newMethods: Set<string>) =
         let oldMethods = 
             (
@@ -627,6 +643,50 @@ type ControlFlowGraph(storage: IGraphStorage) =
         else
             possibleParameterNodes.[0]
     
+    member this.PropagatePassingToAllInheritors (basicMethod: string) (parameterId: int) =
+        let visited = SortedSet<int>()
+    
+        let rec internalPropagator (currentMethod: string) =
+            let exists, currentNode = methodsIndex.FindNode currentMethod
+            assert exists
+            
+            if not (visited.Contains currentNode) then
+                visited.Add currentNode |> assertTrue
+                
+                let sourceParameterNode = this.GetOrCreateDelegateParameter currentMethod parameterId
+                
+                let inheritors = queryReferencedNodes currentNode INHERITED_BY |> Array.map (storage.GetNodeLabel)
+                
+                for (exists, inheritor) in inheritors do    
+                    assert exists
+                    let targetParameterNode = this.GetOrCreateDelegateParameter inheritor parameterId
+                    
+                    storage.AddEdge sourceParameterNode PASSED_TO targetParameterNode |> assertTrue
+                    internalPropagator inheritor
+                
+                visited.Remove currentNode |> assertTrue
+            
+        internalPropagator basicMethod
+    
+    member this.PullAllPassingsFromBasicMethod (basicMethod: string) (inheritor: string) =
+        let exists, basicNode = methodsIndex.FindNode basicMethod
+        assert exists
+        
+        let exists, inheritorNode = methodsIndex.FindNode basicMethod
+        assert exists
+        
+        let parameters = queryReferencedNodes basicNode HAS_PARAMETER
+        
+        for sourceParameter in parameters do
+            let exists, id = storage.GetNodeLabel sourceParameter
+            assert exists
+            
+            let id = int id
+            
+            let targetParameterNode = this.GetOrCreateDelegateParameter inheritor id
+            
+            storage.AddEdge sourceParameter PASSED_TO targetParameterNode |> assertTrue
+    
     member this.AddDelegateInstancePassing (method: string) (instance: string) (passedTo: string) (parameterId: int) (callId: int) =
         let exists, callerId = methodsIndex.FindNode method
         assert exists
@@ -639,6 +699,8 @@ type ControlFlowGraph(storage: IGraphStorage) =
         storage.AddEdge callerId INITIATES_PASSING instantiator |> assertTrue
         storage.AddEdge instantiator INSTANTIATED_WITH (getOrCreateMethodNode instance) |> assertTrue
         storage.AddEdge instantiator PASSED_TO (this.GetOrCreateDelegateParameter passedTo parameterId) |> assertTrue
+        
+        this.PropagatePassingToAllInheritors passedTo parameterId
     
     member this.AddDelegateParameterPassing (caller: string) (sourceParameterId: int) (called: string) (targetParameterId: int) =
         let exists, callerId = methodsIndex.FindNode caller
@@ -651,7 +713,8 @@ type ControlFlowGraph(storage: IGraphStorage) =
         let exists, calledId = methodsIndex.FindNode called
         let targetParameterNodeId = this.GetOrCreateDelegateParameter called targetParameterId
         
-        storage.AddEdge sourceParameterNodeId PASSED_TO targetParameterNodeId
+        storage.AddEdge sourceParameterNodeId PASSED_TO targetParameterNodeId |> assertTrue
+        this.PropagatePassingToAllInheritors called targetParameterId
     
     member this.AddSubstitution (method: string) (parameterId: int) (startState: int<state>) (finalState: int<state>) (label: string) =
         let parameterNodeId = this.GetOrCreateDelegateParameter method parameterId
