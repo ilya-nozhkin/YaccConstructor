@@ -232,11 +232,14 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         Logging.log (sprintf "Full time is %A" (System.DateTime.Now - globalStartTime))
         checkForInterrupt()
         
+        //let isNotLambda id = graph.GetOwnerNameByState (id * 1<state>) |> fun name -> (name.Substring (name.Length - 3)) <> "(0)"
+        
         let startTime = System.DateTime.Now
         let results = 
             let temporaryResults = new HashSet<_>()
             roots
-            |> Array.map (fun x -> ResultProcessing.extractNonCyclicPath x (parser.Value.Source.IntToString) checkForInterrupt)
+            //|> Array.filter (fun root -> (int64 (root.getExtension()) >>> 32 |> int |> isNotLambda) && (int64 (root.getExtension()) &&& 0xFFFFFFFFL |> int |> isNotLambda))
+            |> Array.map (fun x -> (ResultProcessing.extractNonCyclicPath x (parser.Value.Source.IntToString) checkForInterrupt) |> Seq.map (fun path -> (int64 (x.getExtension()) &&& 0xFFFFFFFFL |> int), path))
             |> Array.iter (fun s -> temporaryResults.UnionWith s)
             temporaryResults
         
@@ -245,14 +248,17 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
         
         let startTime = System.DateTime.Now
         let decoder = graph.GetDecoder()
-        for result in results do
-            printfn "%s" result
+        for (start, result) in results do
             
             let decoded = ResultProcessing.decode result decoder
-            printfn "%s" decoded
-            
-            writer.WriteLine decoded
-            writer.WriteLine ()
+            if decoded <> "" then
+                printfn "%s" result
+                printfn "%i %s" (graph.GetNodeByState (start * 1<state>)) (graph.GetOwnerNameByState (start * 1<state>))
+                printfn "%s" decoded
+                
+                writer.WriteLine ("0;0;0 " + (graph.GetOwnerNameByState (start * 1<state>)))
+                writer.WriteLine decoded
+                writer.WriteLine ()
             
         Logging.log (sprintf "Decoding time is %A" (System.DateTime.Now - startTime))
         writer.Flush()
@@ -338,12 +344,14 @@ type ServiceHost(graphProvider: unit -> ControlFlowGraph, port) =
                     invalidateParser()
                     success <- true
                 | "run_analysis" ->
-                    if (restoredFrom <> "") then
+                    (*
+                    if (restoredFrom <> "") && (not parserIsValid) then
                         let startTime = System.DateTime.Now
                         use fileStream = new StreamWriter (restoredFrom)
                         graph.Serialize fileStream
                         graph.GetStorage.DumpToDot (@"C:\hackathon\graph.db")
                         Logging.log (sprintf "Database saving time is %A" (System.DateTime.Now - startTime))
+                        *)
                     
                     let message = RunAnalysisMessage.FromJson dataStream
                     performParsing reader writer message.starts

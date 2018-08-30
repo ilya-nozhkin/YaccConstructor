@@ -231,7 +231,7 @@ module ResultProcessing =
             ()//internalExtract rootContext pathsRoot
         with e -> ()
             
-    let decode (path: string) (decoder: string -> string) =
+    let decode (path: string) (decoder: string -> (bool * string)) =
         let firstAcceptance = set ["CP"; "C"; "RT"; "D"; "RD"; "AR"; "AW"]
         let secondAcceptance = set ["RT"; "RD"; "AR"; "AW"]
         let transformation = dict [("RT", "C"); ("RD", "D"); ("AR", "AR"); ("AW", "AW")]
@@ -239,8 +239,6 @@ module ResultProcessing =
         let secondAcceptance = set ["C"; "CP"; "D"; "AR"; "AW"]
         let transformation = dict [("C", "C"); ("CP", "CP"); ("D", "D"); ("AR", "AR"); ("AW", "AW")]
         *)
-        
-        let delegates = new SortedSet<int>()
         
         let accept (acceptance: Set<string>) = (Seq.takeWhile (fun c -> c >= 'A' && c <= 'Z') >> String.Concat >> (fun prefix -> acceptance.Contains prefix))
         let entities = path.Split ' ' |> Array.filter (accept firstAcceptance)
@@ -253,16 +251,16 @@ module ResultProcessing =
                     let prefix = entity |> Seq.takeWhile (fun c -> c >= 'A' && c <= 'Z') |> String.Concat
                     let index = entity.Substring (prefix.Length)
                     
-                    if prefix = "RD" then
-                        delegates.Add (int index) |> ignore
-                    
-                    if prefix = "RT" && delegates.Contains (int index) then
-                        "CP" + index
+                    if prefix = "RT" then
+                        if fst (decoder ("C" + index)) then
+                            "C" + index
+                        else
+                            "CP" + index
                     else
                         transformation.[prefix] + index
             )
         |> Array.map (fun entity -> (entity = first, entity))
-        |> Array.map (fun (isFirst, entity) -> (if isFirst then "*" else "") + (decoder entity))
+        |> Array.map (fun (isFirst, entity) -> (if isFirst then "*" else "") + (decoder entity |> snd))
         |> Array.rev
         |> String.concat "\n"
         

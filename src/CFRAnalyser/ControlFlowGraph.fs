@@ -386,6 +386,9 @@ type ControlFlowGraph(storage: IGraphStorage) =
                     if (label <> OWNS && label <> FINISHES_AT) then
                         storage.RemoveEdge source label final |> assertTrue
             )
+        
+        queryReferencingNodes methodNodeId INHERITED_BY
+        |> Array.iter (fun source -> storage.RemoveEdge source INHERITED_BY methodNodeId |> assertTrue)
     
     let removeMethod (identifier: string) =
         let exists, nodeId = methodsIndex.FindNode identifier 
@@ -575,8 +578,10 @@ type ControlFlowGraph(storage: IGraphStorage) =
         let basicStart, basicFinal = this.GetOrCreateMethodBounds basicMethod
         let inheritorStart, inheritorFinal = this.GetOrCreateMethodBounds inheritor
        
+        (*
         storage.AddEdge basicStart "e" inheritorStart |> assertTrue
         storage.AddEdge inheritorFinal "e" basicFinal |> assertTrue
+        *)
         
         let exists, basicNode = methodsIndex.FindNode basicMethod
         assert exists
@@ -838,6 +843,21 @@ type ControlFlowGraph(storage: IGraphStorage) =
                     
                     storage.AddWeakEdge (fst substitution) (DELEGATE_CALL callId) (fst instance) |> assertTrue
                     storage.AddWeakEdge (snd instance) (DELEGATE_RETURN callId) (snd substitution) |> assertTrue
+        
+        for (method, nodeId) in methodsIndex.Pairs() do
+            let inheritors = queryReferencedNodes nodeId INHERITED_BY
+            
+            if inheritors.Length > 0 then
+                let (basicStart, basicFinal) = this.GetOrCreateMethodBounds method
+                for inheritor in inheritors do
+                    let exists, inheritor = storage.GetNodeLabel inheritor
+                    assert exists
+                    
+                    let (inheritorStart, inheritorFinal) = this.GetOrCreateMethodBounds inheritor
+                    
+                    storage.AddWeakEdge basicStart "e" inheritorStart |> assertTrue
+                    storage.AddWeakEdge inheritorFinal "e" basicFinal |> assertTrue
+                
             
         let clearWeakEdges = fun () -> this.ClearWeakEdges()
         
@@ -923,8 +943,26 @@ type ControlFlowGraph(storage: IGraphStorage) =
     member this.GetFiles() =
         filesIndex.Pairs() |> Seq.map fst
     
+    member this.GetNodeByState (id: int<state>) =
+        let exists, node = denseStatesIndex.FindNode id
+        assert exists
+        
+        node
+        
+    member this.GetOwnerNameByState (id: int<state>) =
+        let exists, node = denseStatesIndex.FindNode id
+        assert exists
+        
+        let possibleOwners = queryReferencingNodes node OWNS
+        assert (possibleOwners.Length = 1)
+        
+        let exists, name = storage.GetNodeLabel possibleOwners.[0]
+        assert exists
+        
+        name
+    
     member this.GetDecoder() = 
-        fun key -> decoderInfo.[key]
+        fun key -> decoderInfo.TryGetValue key
         
     member this.Serialize (writer: StreamWriter) = 
         writer.WriteLine "#decoder"
